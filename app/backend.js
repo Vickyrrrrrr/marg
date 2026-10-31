@@ -10,7 +10,10 @@ async function api(path, data) {
       : {},
   );
   const result = await r.json();
-  if (!r.ok) throw Error(result.error);
+  if (!r.ok) {
+    if (r.status === 401 && typeof showSignIn === "function") showSignIn(false);
+    throw Error(result.error);
+  }
   state = result;
   return result;
 }
@@ -128,12 +131,6 @@ nav.onclick = () => go("operations");
 document.querySelector("nav").append(nav);
 $("#content").innerHTML =
   '<div class="card panel">Connecting to your workspace…</div>';
-api("/api/state")
-  .then(() => render())
-  .catch((e) => {
-    $("#content").innerHTML =
-      '<div class="card panel">Cannot connect to the backend. Start the application with python3 server.py.</div>';
-  });
 const workflowRender = render;
 render = function () {
   workflowRender();

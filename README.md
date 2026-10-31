@@ -4,7 +4,7 @@ Ledgerly is a Windows and macOS desktop application being developed for pharmacy
 
 Implemented workflows include company and financial-year setup, classified ledger creation, balanced opening entries, period locks, batch inventory, pack/loose sales, inclusive/exclusive tax pricing, MRP checks, purchase receipts, customer/supplier returns, return quarantine and inspection, journal entries, a trial balance and database backups.
 
-This is an incomplete development build. Full payment allocation, GST reporting, prescription controls, printing, authentication, financial-year rollover and verified production installers remain unfinished. See [GOALS.md](GOALS.md) for the intended scope and [TESTING.md](TESTING.md) for pre-push checks.
+This is an incomplete development build. Full payment allocation, GST reporting, prescription controls, printing, financial-year rollover and verified production installers remain unfinished. See [GOALS.md](GOALS.md) for the intended scope and [TESTING.md](TESTING.md) for pre-push checks.
 
 ## Run locally
 
@@ -40,3 +40,6 @@ GitHub builds run only when someone manually starts **Desktop validation** in th
 - `tests/`: database and transaction regression tests.
 
 Manual Actions runs offer Windows, macOS or both. npm, pip, Electron and installer-tool downloads are cached per platform. Installers are uploaded as workflow artifacts; publishing to GitHub Releases is disabled and no GH_TOKEN is required. Default application icons and skipped signing are expected for these unsigned development builds.
+
+
+Local operators sign in with administrator, manager, cashier or accountant roles. First launch creates the administrator; no default credentials are seeded. Administrators create operators, reset passwords, change roles and disable access. Role/status/password changes revoke existing sessions, and the last active administrator cannot be disabled. Passwords use salted PBKDF2 hashes; session tokens are stored hashed and expire after eight hours. Sensitive writes are role-checked by the local backend and attributed in its audit table. This remains a loopback-only desktop service; shared-counter networking is not enabled.

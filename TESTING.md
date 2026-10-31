@@ -8,15 +8,16 @@ Run the complete backend suite before pushing changes to Python, transaction rul
 python -m unittest discover -s tests -v
 ```
 
-**Current requirement: all 18 backend tests must pass, with no failures, errors or skipped tests.** Keep all existing relevant tests when adding functionality; update this count when the suite grows. Do not add tests solely to reach a count.
+**Current requirement: all 24 backend tests must pass, with no failures, errors or skipped tests.** Keep all existing relevant tests when adding functionality; update this count when the suite grows. Do not add tests solely to reach a count.
 
 The suite covers purchases/sales/returns, atomic overselling prevention, return limits and rounding, quarantine/inspection, backup preservation, pack conversion, authoritative quotes, MRP limits, inclusive tax, migrations, duplicate submissions, journal balancing, period locks and balanced opening entries. Each protects a real data or money-handling behavior.
 
-Also run these **3 JavaScript syntax checks** when changing application or desktop JavaScript:
+Also run these **4 JavaScript syntax checks** when changing application or desktop JavaScript:
 
 ```sh
 node --check app/app.js
 node --check app/backend.js
+node --check app/auth.js
 node --check desktop/main.cjs
 ```
 
@@ -41,6 +42,8 @@ Check affected links, commands and workflow configuration. Application tests nee
 
 Keep one workflow: **Desktop validation**. It is triggered exclusively by `workflow_dispatch`, using Actions → Desktop validation → Run workflow. It runs the backend tests and packaging smoke test on Windows and macOS, then produces unsigned development installers. No push, pull-request, schedule or release trigger is configured. Start it manually when desktop build validation is needed.
 
-Two connection-lifecycle regression tests verify that success commits and failure rolls back while both paths close SQLite handles. These prevent Windows temporary-directory cleanup failures. The suite currently totals 18 tests.
+Two connection-lifecycle regression tests verify that success commits and failure rolls back while both paths close SQLite handles. These prevent Windows temporary-directory cleanup failures. The suite currently totals 24 tests.
 
 Manual build commands explicitly use `--publish never`, with `build.publish` disabled in package.json. Workflow artifacts do not require a GitHub release token. Select one target platform for a faster focused build; use both when validating cross-platform changes. Caches reduce repeat download time, not the actual compilation work.
+
+Authentication tests exercise the actual HTTP service: first-owner bootstrap, sign-in/out, role-denied writes, expired sessions, password hashing, audit attribution, last-admin protection and session revocation on operator disable. These protect offline business data rather than testing UI labels.

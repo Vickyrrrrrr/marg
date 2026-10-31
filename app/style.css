@@ -697,3 +697,5 @@ button:disabled {
   opacity: 0.55;
   cursor: wait;
 }
+
+[hidden] { display: none !important; }

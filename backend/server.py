@@ -2,6 +2,8 @@ import sqlite3, json, os, secrets, sys, hashlib
 from decimal import InvalidOperation
 from contextlib import closing
 import business_setup
+import security
+from http.cookies import SimpleCookie
 from http.server import ThreadingHTTPServer, SimpleHTTPRequestHandler
 from pathlib import Path
 from datetime import datetime, date
@@ -42,6 +44,7 @@ def init():
         if 'taxable' not in line_columns:
             c.execute('ALTER TABLE lines ADD COLUMN taxable INTEGER')
         business_setup.initialize(c)
+        security.initialize(c)
         c.execute('PRAGMA user_version=4')
 
 def backup():
@@ -75,7 +78,7 @@ def snapshot():
             docs.append({**dict(r), 'customer': r['party'], 'number': r['kind'].upper() + '-' + str(r['id']).zfill(5), 'total': r['total'] / 100, 'lines': lines})
         return {**business_setup.snapshot(c), 'products': products, 'sales': [d for d in docs if d['kind'] == 'sale'], 'documents': docs, 'accounts': [dict(r) for r in c.execute('SELECT account,SUM(debit) AS debit,SUM(credit) AS credit FROM (SELECT account,debit,credit FROM journal UNION ALL SELECT ledger.name AS account,opening_line.debit,opening_line.credit FROM opening_line JOIN ledger ON ledger.id=opening_line.ledger) GROUP BY account ORDER BY account')], 'journal': [dict(r) for r in c.execute('SELECT journal.*,documents.party,documents.date,documents.kind FROM journal JOIN documents ON documents.id=document ORDER BY journal.id DESC')], 'unposted_documents': c.execute('SELECT COUNT(*) FROM documents WHERE NOT EXISTS(SELECT 1 FROM journal WHERE document=documents.id)').fetchone()[0], 'inspections': [dict(r) for r in c.execute('SELECT inspections.*,products.name FROM inspections JOIN products ON products.id=product ORDER BY inspections.id DESC')], 'movements': [dict(r) for r in c.execute('SELECT movements.*,products.name FROM movements JOIN products ON product=products.id ORDER BY movements.id DESC')]}
 
-def mutate(path, d):
+def mutate(path, d, actor=None):
     with connection() as c:
         c.execute('BEGIN IMMEDIATE')
         if path in ('/api/company','/api/ledgers','/api/openings','/api/period-lock'):
@@ -227,6 +230,8 @@ def mutate(path, d):
                     c.execute('INSERT INTO journal(document,account,debit,credit) VALUES(?,?,?,?)',(doc,account,debit,credit))
         else:
             raise ValueError('Unknown endpoint')
+        if actor and path != '/api/quote':
+            c.execute('INSERT INTO audit(operator,action,created_at) VALUES(?,?,?)',(actor['id'],path,int(security.time.time())))
     return snapshot()
 
 class Handler(SimpleHTTPRequestHandler):
@@ -234,30 +239,81 @@ class Handler(SimpleHTTPRequestHandler):
     def __init__(self, *a, **kw):
         super().__init__(*a, directory=str(ROOT / 'app'), **kw)
 
-    def answer(self, status, data):
+    def token(self):
+        cookie=SimpleCookie()
+        try:cookie.load(self.headers.get('Cookie',''))
+        except Exception:return None
+        return cookie['ledgerly_session'].value if 'ledgerly_session' in cookie else None
+
+    def user(self):
+        with connection() as c:return security.current(c,self.token())
+
+    def answer(self, status, data, cookie=None):
         b = json.dumps(data).encode()
         self.send_response(status)
         self.send_header('Content-Type', 'application/json')
         self.send_header('Cache-Control', 'no-store')
+        self.send_header('X-Content-Type-Options','nosniff')
+        if cookie is not None:self.send_header('Set-Cookie',cookie)
         self.end_headers()
         self.wfile.write(b)
 
+    def valid_host(self):
+        return self.headers.get('Host') in ('127.0.0.1:'+str(self.server.server_port),'localhost:'+str(self.server.server_port))
+
     def do_GET(self):
-        if self.path == '/api/state':
-            self.answer(200, snapshot())
+        if not self.valid_host():return self.answer(403,{'error':'Invalid local host'})
+        if self.path == '/api/auth':
+            with connection() as c:
+                self.answer(200,{'needs_setup':not c.execute('SELECT 1 FROM operator').fetchone(),'operator':security.current(c,self.token())})
+        elif self.path == '/api/state':
+            user=self.user()
+            if not user:return self.answer(401,{'error':'Sign in to continue'})
+            self.answer(200,security.redact(snapshot(),user))
+        elif self.path == '/api/users':
+            user=self.user()
+            try:security.authorize(user,self.path,{})
+            except PermissionError as e:return self.answer(403 if user else 401,{'error':str(e)})
+            with connection() as c:self.answer(200,{'users':[dict(r) for r in c.execute('SELECT id,username,role,active FROM operator ORDER BY username')]})
         else:
             super().do_GET()
 
     def do_POST(self):
         try:
+            if not self.valid_host():return self.answer(403,{'error':'Invalid local host'})
             origin = self.headers.get('Origin')
-            if not (not origin or origin.split('://', 1)[-1] == self.headers.get('Host')):
-                raise ValueError('Cross-origin request rejected')
+            if origin and origin.split('://', 1)[-1] != self.headers.get('Host'):
+                return self.answer(403,{'error':'Cross-origin request rejected'})
+            if self.headers.get('Content-Type','').split(';')[0]!='application/json':
+                raise ValueError('JSON content type required')
             n = int(self.headers.get('Content-Length', '0'))
-            if not 0 < n < 1000000:
-                raise ValueError('Invalid request size')
+            if not 0 < n < 1000000:raise ValueError('Invalid request size')
             d = json.loads(self.rfile.read(n))
-            self.answer(200, backup() if self.path == '/api/backup' else mutate(self.path, d))
+            if not isinstance(d,dict):raise ValueError('JSON object required')
+            if self.path in ('/api/bootstrap','/api/login'):
+                with connection() as c:
+                    c.execute('BEGIN IMMEDIATE')
+                    if self.path=='/api/bootstrap':
+                        if c.execute('SELECT 1 FROM operator').fetchone():return self.answer(409,{'error':'Administrator already exists'})
+                        security.create_operator(c,{**d,'role':'admin'})
+                    token=security.login(c,d)
+                if not token:return self.answer(401,{'error':'Invalid operator name or password, or account temporarily locked'})
+                return self.answer(200,{'ok':True},'ledgerly_session='+token+'; HttpOnly; SameSite=Strict; Path=/; Max-Age=28800')
+            if self.path=='/api/logout':
+                with connection() as c:c.execute('DELETE FROM session WHERE token_hash=?',(security.hashlib.sha256((self.token() or '').encode()).hexdigest(),))
+                return self.answer(200,{'ok':True},'ledgerly_session=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0')
+            user=self.user()
+            try:security.authorize(user,self.path,d)
+            except PermissionError as e:return self.answer(403 if user else 401,{'error':str(e)})
+            if self.path in ('/api/users','/api/users/update'):
+                with connection() as c:
+                    c.execute('BEGIN IMMEDIATE')
+                    if self.path=='/api/users':security.create_operator(c,d)
+                    else:security.update_operator(c,d)
+                    c.execute('INSERT INTO audit(operator,action,created_at) VALUES(?,?,?)',(user['id'],self.path,int(security.time.time())))
+                return self.answer(200,{'ok':True})
+            result=backup() if self.path == '/api/backup' else mutate(self.path,d,user)
+            self.answer(200,result if self.path in ('/api/quote','/api/backup') else security.redact(result,user))
         except (ValueError, KeyError, TypeError, InvalidOperation, sqlite3.IntegrityError) as e:
             self.answer(400, {'error': str(e) or 'Invalid input'})
 if __name__ == '__main__':
