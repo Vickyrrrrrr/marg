@@ -1,34 +1,32 @@
-# Ledgerly ERP development build
+# Ledgerly
 
-Run `python3 server.py` from this directory. The UI and API share port 8001 (override with PORT). Persistent SQLite data lives in data/erp.sqlite3. Back up this file while the server is stopped.
+Ledgerly is a Windows and macOS desktop application being developed for pharmacy billing, batch inventory and business accounting. It uses Electron with a local Python backend and SQLite database. Marg ERP is a workflow reference; Ledgerly has its own implementation and interface.
 
-Flow: create a product batch in Inventory; receive stock in Purchases & returns; create a sale in Billing; return against the original sale invoice. The server validates quantities, rejects overselling and expired stock, limits returns to sold quantities, and commits each document and its stock movements atomically. Monetary amounts are stored in integer paise.
+Implemented workflows include company and financial-year setup, classified ledger creation, balanced opening entries, period locks, batch inventory, pack/loose sales, inclusive/exclusive tax pricing, MRP checks, purchase receipts, customer/supplier returns, return quarantine and inspection, journal entries, a trial balance and database backups.
 
-Verification: `python3 -m unittest test_server.py`.
+This is an incomplete development build. Full payment allocation, GST reporting, prescription controls, printing, authentication, financial-year rollover and verified production installers remain unfinished. See [GOALS.md](GOALS.md) for the intended scope and [TESTING.md](TESTING.md) for pre-push checks.
 
-This is a development build without authentication. Do not expose it publicly or enter live business data. Missing work includes user roles, full double-entry accounting, payment allocation, GST compliance integrations, printing, purchase orders, offline operation, migration and browser verification. Tax calculations are illustrative, not a compliance certification.
+## Run locally
 
-## Desktop target: Windows and macOS
+Install Node.js and Python 3.12, then run:
 
-Electron launches a loopback-only backend on a dynamically allocated port. SQLite is stored in Electron's OS-specific userData folder, not in the installed application. The renderer has no Node access, is sandboxed, and blocks external navigation/new windows. Closing the desktop app stops its backend.
+```sh
+npm ci
+npm start
+```
 
-Development: install Node/Python, run `npm install`, then `npm start`.
+For backend/UI development without Electron, run `python server.py` and open `http://127.0.0.1:8001`. Use `python3` where that is your Python command. The desktop app stores its database in the operating system's application-data folder; backend-only development uses `data/erp.sqlite3`.
 
-Packaging on each target OS: install PyInstaller, run `python desktop/build_backend.py`, then `npm run package:win` on Windows or `npm run package:mac` on macOS. Packaged builds embed the Python backend executable, so end users do not need Python. Build and test each architecture separately. Windows signing and macOS signing/notarization credentials are not configured. Installers have not yet been built or tested on either OS.
+## Build desktop installers
 
-### Pricing and quantities
+Build on the target operating system:
 
-Stock is measured in whole loose units. Each batch has a pack size. Billing can accept packs, converts them to loose units, and previews the authoritative backend total before saving. Sale prices and optional MRP are per loose unit. The tax basis is explicit per batch; existing batches remain tax-exclusive after migration. Customer returns allocate original invoice amounts and enter quarantine. New sale retries carry an idempotency key to prevent duplicate posting within the active session. No tax-jurisdiction compliance claim is made.
+```sh
+python -m pip install pyinstaller==6.16.0
+python desktop/build_backend.py
+python desktop/smoke_backend.py
+```
 
-### Journal scope
+Then run `npm run package:win` on Windows or `npm run package:mac` on macOS. Packaged apps include the backend, so users do not need Python. Builds are unsigned until signing credentials are configured.
 
-New sales/purchases and their returns post balanced journal entries in the same database transaction as stock. Purchases use a periodic purchases account; perpetual inventory valuation and cost-of-goods-sold postings are not implemented. Input/output tax is held in explicitly unclassified accounts pending jurisdiction logic. Payments, bank reconciliation and statutory statements are not implemented. Historical documents are flagged as unposted, not silently treated as complete ledger history. Returns against historical lines without a taxable-value snapshot are rejected until reconciliation is implemented. The trial balance is a development control, not a statutory accounting report.
-
-
-### Company and year setup
-
-Use Company setup to enter the business identity and financial-year dates. Create classified ledgers and post balanced opening balances before the first invoice. The trial balance includes those openings. Transaction dates must be within the year and after its lock date. This build has one company per database; rollover, multiple companies and billwise opening allocation remain unimplemented. No seeded business records are created.
-
-### Verification performed
-
-16 backend unit/integration tests; JavaScript syntax checks; Chromium UI workflow (company setup, batch creation, purchase receipt, pack sale, saved history); packaged Linux backend startup, HTTP assets and persisted-data restart check. Windows/macOS CI is configured but its results must be checked separately. This is a development application, not a verified production Marg replacement.
+GitHub builds run only when someone manually starts **Desktop validation** in the repository's Actions tab. Pushing code does not trigger Actions.

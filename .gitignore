@@ -8,3 +8,9 @@ backend-dist/
 build/
 dist/
 *.spec
+
+# Keep local reverse-engineering material out of the application repository.
+*.exe
+*.dll
+*.deb
+*.zip

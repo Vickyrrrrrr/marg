@@ -1,14 +1,6 @@
 name: Desktop validation
 on:
   workflow_dispatch:
-  push:
-    paths:
-      - 'app/**'
-      - 'desktop/**'
-      - 'server.py'
-      - 'test_server.py'
-      - 'package*.json'
-      - '.github/workflows/desktop-checks.yml'
 permissions:
   contents: read
 jobs:

@@ -1,0 +1,42 @@
+# Pre-push verification
+
+## Application changes
+
+Run the complete backend suite before pushing changes to Python, transaction rules, database setup or connected UI workflows:
+
+```sh
+python -m unittest -v test_server.py
+```
+
+**Current requirement: all 16 backend tests must pass, with no failures, errors or skipped tests.** Keep all existing relevant tests when adding functionality; update this count when the suite grows. Do not add tests solely to reach a count.
+
+The suite covers purchases/sales/returns, atomic overselling prevention, return limits and rounding, quarantine/inspection, backup preservation, pack conversion, authoritative quotes, MRP limits, inclusive tax, migrations, duplicate submissions, journal balancing, period locks and balanced opening entries. Each protects a real data or money-handling behavior.
+
+Also run these **3 JavaScript syntax checks** when changing application or desktop JavaScript:
+
+```sh
+node --check app/app.js
+node --check app/backend.js
+node --check desktop/main.cjs
+```
+
+For a changed user workflow, manually exercise it through the UI, including invalid input and persistence after restart. Backend tests do not establish UI correctness.
+
+## Packaging changes
+
+On each affected target OS, package the backend and run **1 packaged-backend smoke test** before producing its installer:
+
+```sh
+python desktop/build_backend.py
+python desktop/smoke_backend.py
+```
+
+That test checks startup, HTTP assets and database persistence after restart using temporary test data. Then build the Windows installer or macOS image and verify launch and shutdown on that OS. Linux checks do not certify either desktop target.
+
+## Documentation and workflow-only changes
+
+Check affected links, commands and workflow configuration. Application tests need not be rerun unless executable behavior changed. There are no automatic pre-push hooks or automatic Actions triggers.
+
+## GitHub Actions
+
+Keep one workflow: **Desktop validation**. It is triggered exclusively by `workflow_dispatch`, using Actions → Desktop validation → Run workflow. It runs the backend tests and packaging smoke test on Windows and macOS, then produces unsigned development installers. No push, pull-request, schedule or release trigger is configured. Start it manually when desktop build validation is needed.
