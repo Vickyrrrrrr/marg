@@ -1,0 +1,10 @@
+analysis/
+
+data/
+__pycache__/
+
+node_modules/
+backend-dist/
+build/
+dist/
+*.spec

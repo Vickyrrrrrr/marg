@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Ledgerly — Business workspace</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <aside>
+      <div class="brand">
+        <span class="logo">✳</span>
+        <div>ledgerly<small>BUSINESS WORKSPACE</small></div>
+      </div>
+      <div class="workspace">
+        <span class="avatar">N</span>
+        <div><b>Pharmacy workspace</b><small>Retail workspace</small></div>
+        <span>⌄</span>
+      </div>
+      <div class="navlabel">WORKSPACE</div>
+      <nav>
+        <button data-page="overview" class="active">
+          <span>▦</span> Overview</button
+        ><button data-page="billing"><span>▤</span> Billing</button
+        ><button data-page="inventory"><span>◫</span> Inventory</button
+        ><button data-page="activity"><span>↗</span> Sales history</button>
+      </nav>
+      <div class="sidebottom">
+        <div class="profile">
+          <span class="avatar user">A</span>
+          <div><b>Admin user</b><small>Store administrator</small></div>
+        </div>
+      </div>
+    </aside>
+    <main>
+      <header>
+        <div class="breadcrumb">
+          Workspace <span>/</span> <b id="crumb">Overview</b>
+        </div>
+        <div class="topright">
+          <span class="live"><i></i> Local workspace</span
+          ><span class="avatar user">A</span>
+        </div>
+      </header>
+      <div id="content"></div>
+    </main>
+    <div id="toast" role="status"></div>
+    <script src="app.js"></script>
+    <script src="backend.js"></script>
+  </body>
+</html>
