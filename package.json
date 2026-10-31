@@ -5,9 +5,9 @@
   "main": "desktop/main.cjs",
   "scripts": {
     "start": "electron .",
-    "test": "python3 -m unittest test_server.py",
-    "package:win": "electron-builder --win nsis",
-    "package:mac": "electron-builder --mac dmg"
+    "test": "python -m unittest discover -s tests -v",
+    "package:win": "electron-builder --win nsis --publish never",
+    "package:mac": "electron-builder --mac dmg --publish never"
   },
   "devDependencies": {
     "electron": "^35.0.0",
@@ -17,7 +17,7 @@
     "appId": "com.ledgerly.desktop",
     "productName": "Ledgerly",
     "files": [
-      "desktop/**",
+      "desktop/main.cjs",
       "package.json"
     ],
     "extraResources": [
@@ -36,6 +36,9 @@
     "nsis": {
       "oneClick": false,
       "allowToChangeInstallationDirectory": true
-    }
-  }
+    },
+    "publish": null,
+    "npmRebuild": false
+  },
+  "description": "Desktop pharmacy billing, batch inventory and accounting workspace"
 }

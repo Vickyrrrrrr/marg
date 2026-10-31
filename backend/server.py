@@ -1,15 +1,25 @@
 import sqlite3, json, os, secrets, sys, hashlib
 from decimal import InvalidOperation
+from contextlib import closing
 import business_setup
 from http.server import ThreadingHTTPServer, SimpleHTTPRequestHandler
 from pathlib import Path
 from datetime import datetime, date
 from decimal import Decimal, ROUND_HALF_UP
-ROOT = Path(getattr(sys, '_MEIPASS', Path(__file__).parent))
+ROOT = Path(getattr(sys, '_MEIPASS', Path(__file__).resolve().parents[1]))
 DB = Path(os.environ.get('LEDGERLY_DATA_DIR', str(ROOT / 'data'))) / 'erp.sqlite3'
 
+class DatabaseConnection(sqlite3.Connection):
+    """Commit/rollback on context exit and always release the database handle."""
+    def __exit__(self, exc_type, exc_value, traceback):
+        try:
+            return super().__exit__(exc_type, exc_value, traceback)
+        finally:
+            self.close()
+
+
 def connection():
-    c = sqlite3.connect(DB, timeout=20)
+    c = sqlite3.connect(DB, timeout=20, factory=DatabaseConnection)
     c.row_factory = sqlite3.Row
     c.execute('PRAGMA foreign_keys=ON')
     return c
@@ -38,7 +48,7 @@ def backup():
     folder = DB.parent / 'backups'
     folder.mkdir(parents=True, exist_ok=True)
     target = folder / ('ledgerly-' + datetime.now().strftime('%Y%m%d-%H%M%S-%f') + '.sqlite3')
-    with connection() as source, sqlite3.connect(target) as destination:
+    with connection() as source, closing(sqlite3.connect(target)) as destination:
         source.backup(destination)
         if destination.execute('PRAGMA integrity_check').fetchone()[0] != 'ok':
             raise ValueError('Backup integrity check failed')

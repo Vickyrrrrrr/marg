@@ -1,5 +1,7 @@
-import unittest,tempfile
+import unittest,tempfile,sys
+from contextlib import closing
 from pathlib import Path
+sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'backend'))
 import server
 class Workflow(unittest.TestCase):
  def setUp(self):
@@ -31,7 +33,7 @@ class Workflow(unittest.TestCase):
  def test_backup_preserves_data(self):
   self.doc('purchase',5);result=server.backup()
   import sqlite3
-  with sqlite3.connect(server.DB.parent/'backups'/result['filename']) as c:
+  with closing(sqlite3.connect(server.DB.parent/'backups'/result['filename'])) as c:
    self.assertEqual(c.execute('SELECT stock FROM products').fetchone()[0],5)
  def test_inclusive_pack_sale_quote(self):
   with server.connection() as c:c.execute('UPDATE products SET price=11200,mrp=11200,tax_inclusive=1,pack_size=10')
@@ -94,4 +96,17 @@ class Workflow(unittest.TestCase):
   self.assertTrue(server.snapshot()['openings_posted'])
   self.assertEqual(sum(a['debit']-a['credit'] for a in server.snapshot()['accounts']),0)
   with self.assertRaises(ValueError):server.mutate('/api/openings',dict(lines=[dict(ledger=1,debit=100),dict(ledger=2,credit=100)]))
+ def test_connection_closes_after_commit(self):
+  import sqlite3
+  with server.connection() as c:c.execute("INSERT INTO ledger(name,category) VALUES('Handle test','cash')")
+  with self.assertRaises(sqlite3.ProgrammingError):c.execute('SELECT 1')
+  self.assertEqual(len(server.snapshot()['ledgers']),1)
+ def test_connection_closes_after_rollback(self):
+  import sqlite3
+  with self.assertRaises(ValueError):
+   with server.connection() as c:
+    c.execute("INSERT INTO ledger(name,category) VALUES('Rollback test','cash')")
+    raise ValueError('abort')
+  with self.assertRaises(sqlite3.ProgrammingError):c.execute('SELECT 1')
+  self.assertEqual(len(server.snapshot()['ledgers']),0)
 if __name__=='__main__':unittest.main()

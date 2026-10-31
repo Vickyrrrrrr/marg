@@ -15,18 +15,28 @@ npm ci
 npm start
 ```
 
-For backend/UI development without Electron, run `python server.py` and open `http://127.0.0.1:8001`. Use `python3` where that is your Python command. The desktop app stores its database in the operating system's application-data folder; backend-only development uses `data/erp.sqlite3`.
+For backend/UI development without Electron, run `python backend/server.py` and open `http://127.0.0.1:8001`. Use `python3` where that is your Python command. The desktop app stores its database in the operating system's application-data folder; backend-only development uses `data/erp.sqlite3`.
 
 ## Build desktop installers
 
 Build on the target operating system:
 
 ```sh
-python -m pip install pyinstaller==6.16.0
-python desktop/build_backend.py
-python desktop/smoke_backend.py
+python -m pip install -r scripts/requirements-build.txt
+python scripts/build_backend.py
+python scripts/smoke_backend.py
 ```
 
 Then run `npm run package:win` on Windows or `npm run package:mac` on macOS. Packaged apps include the backend, so users do not need Python. Builds are unsigned until signing credentials are configured.
 
 GitHub builds run only when someone manually starts **Desktop validation** in the repository's Actions tab. Pushing code does not trigger Actions.
+
+## Source layout
+
+- `app/`: interface and styles.
+- `backend/`: local HTTP service, SQLite transactions and business setup.
+- `desktop/`: Electron application entry point.
+- `scripts/`: backend packaging requirements, builder and packaged-app smoke check.
+- `tests/`: database and transaction regression tests.
+
+Manual Actions runs offer Windows, macOS or both. npm, pip, Electron and installer-tool downloads are cached per platform. Installers are uploaded as workflow artifacts; publishing to GitHub Releases is disabled and no GH_TOKEN is required. Default application icons and skipped signing are expected for these unsigned development builds.

@@ -20,7 +20,7 @@ function startBackend() {
         : "python3";
     backend = spawn(
       executable,
-      app.isPackaged ? [] : [path.join(__dirname, "..", "server.py")],
+      app.isPackaged ? [] : [path.join(__dirname, "..", "backend", "server.py")],
       {
         env: {
           ...process.env,
