@@ -1,4 +1,5 @@
 name: Desktop validation
+run-name: ${{ inputs.full_checks && 'Full validation' || 'Fast installer' }} · ${{ inputs.target }} · ${{ github.ref_name }}
 on:
   workflow_dispatch:
     inputs:
