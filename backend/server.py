@@ -2,6 +2,7 @@ import sqlite3, json, os, secrets, sys, hashlib
 from decimal import InvalidOperation
 from contextlib import closing
 import business_setup
+import settlements
 import security
 from http.cookies import SimpleCookie
 from http.server import ThreadingHTTPServer, SimpleHTTPRequestHandler
@@ -45,7 +46,8 @@ def init():
             c.execute('ALTER TABLE lines ADD COLUMN taxable INTEGER')
         business_setup.initialize(c)
         security.initialize(c)
-        c.execute('PRAGMA user_version=4')
+        settlements.initialize(c)
+        c.execute('PRAGMA user_version=5')
 
 def backup():
     folder = DB.parent / 'backups'
@@ -69,6 +71,15 @@ def integer(v):
         raise ValueError('Quantity must be a positive integer')
     return n
 
+TRIAL_BALANCE_SQL = """
+SELECT account,SUM(debit) AS debit,SUM(credit) AS credit FROM (
+ SELECT account,debit,credit FROM journal
+ UNION ALL
+ SELECT CASE WHEN ledger.category IN ('cash','bank') THEN 'Cash/bank: '||ledger.name ELSE ledger.name END AS account,
+ opening_line.debit,opening_line.credit FROM opening_line JOIN ledger ON ledger.id=opening_line.ledger
+) GROUP BY account ORDER BY account
+"""
+
 def snapshot():
     with connection() as c:
         products = [{**dict(r), 'price': r['price'] / 100, 'mrp': None if r['mrp'] is None else r['mrp']/100, 'tax': r['tax'] / 100} for r in c.execute('SELECT * FROM products ORDER BY name')]
@@ -76,12 +87,14 @@ def snapshot():
         for r in c.execute('SELECT * FROM documents ORDER BY id'):
             lines = [{**dict(l), 'name': l['name'], 'price': l['price'] / 100, 'tax': l['tax'] / 100, 'total': l['total'] / 100} for l in c.execute('SELECT lines.*,products.name,products.batch FROM lines JOIN products ON products.id=lines.product WHERE document=?', (r['id'],))]
             docs.append({**dict(r), 'customer': r['party'], 'number': r['kind'].upper() + '-' + str(r['id']).zfill(5), 'total': r['total'] / 100, 'lines': lines})
-        return {**business_setup.snapshot(c), 'products': products, 'sales': [d for d in docs if d['kind'] == 'sale'], 'documents': docs, 'accounts': [dict(r) for r in c.execute('SELECT account,SUM(debit) AS debit,SUM(credit) AS credit FROM (SELECT account,debit,credit FROM journal UNION ALL SELECT ledger.name AS account,opening_line.debit,opening_line.credit FROM opening_line JOIN ledger ON ledger.id=opening_line.ledger) GROUP BY account ORDER BY account')], 'journal': [dict(r) for r in c.execute('SELECT journal.*,documents.party,documents.date,documents.kind FROM journal JOIN documents ON documents.id=document ORDER BY journal.id DESC')], 'unposted_documents': c.execute('SELECT COUNT(*) FROM documents WHERE NOT EXISTS(SELECT 1 FROM journal WHERE document=documents.id)').fetchone()[0], 'inspections': [dict(r) for r in c.execute('SELECT inspections.*,products.name FROM inspections JOIN products ON products.id=product ORDER BY inspections.id DESC')], 'movements': [dict(r) for r in c.execute('SELECT movements.*,products.name FROM movements JOIN products ON product=products.id ORDER BY movements.id DESC')]}
+        return {**business_setup.snapshot(c), **settlements.snapshot(c), 'products': products, 'sales': [d for d in docs if d['kind'] == 'sale'], 'documents': docs, 'accounts': [dict(r) for r in c.execute(TRIAL_BALANCE_SQL)], 'journal': [dict(r) for r in c.execute('SELECT journal.*,documents.party,documents.date,documents.kind FROM journal JOIN documents ON documents.id=document ORDER BY journal.id DESC')], 'unposted_documents': c.execute('SELECT COUNT(*) FROM documents WHERE NOT EXISTS(SELECT 1 FROM journal WHERE document=documents.id)').fetchone()[0], 'inspections': [dict(r) for r in c.execute('SELECT inspections.*,products.name FROM inspections JOIN products ON products.id=product ORDER BY inspections.id DESC')], 'movements': [dict(r) for r in c.execute('SELECT movements.*,products.name FROM movements JOIN products ON product=products.id ORDER BY movements.id DESC')]}
 
 def mutate(path, d, actor=None):
     with connection() as c:
         c.execute('BEGIN IMMEDIATE')
-        if path in ('/api/company','/api/ledgers','/api/openings','/api/period-lock'):
+        if path == '/api/settlements':
+            settlements.post(c,d,cents,business_setup.validate_date)
+        elif path in ('/api/company','/api/ledgers','/api/openings','/api/period-lock'):
             business_setup.mutate(c,path,d,cents)
         elif path == '/api/inspection':
             pid = d['product']

@@ -43,10 +43,10 @@ render = function () {
       "Opening stock (receive a purchase to add stock)";
   }
   if (page === "billing") {
-    const note = $("#summary").parentElement.querySelector("p:last-child");
+    const note = $("#summary").parentElement.querySelector(":scope > p.muted");
     if (note)
       note.textContent =
-        "Amounts are tax-exclusive. Completed sales update stock immediately.";
+        "Each batch uses its configured tax basis. Saved sales update local stock.";
   }
 };
 completeSale = async function () {

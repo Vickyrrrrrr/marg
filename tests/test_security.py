@@ -30,6 +30,8 @@ class Access(unittest.TestCase):
   self.assertEqual(self.request('/api/company',{},client)[0],403)
   self.assertEqual(self.request('/api/users',dict(username='intruder',password='secret-password',role='admin'),client)[0],403)
   self.assertEqual(self.request('/api/documents',dict(kind='purchase',lines=[]),client)[0],403)
+  self.assertEqual(self.request('/api/settlements',dict(kind='payment'),client)[0],403)
+  self.assertEqual(self.request('/api/settlements',dict(kind='receipt'),client)[0],400)
   state=self.request('/api/state',client=client)[1];self.assertEqual(state['journal'],[])
  def test_wrong_password_and_expired_session(self):
   self.bootstrap();self.assertEqual(self.request('/api/login',dict(username='owner',password='incorrect'))[0],401)

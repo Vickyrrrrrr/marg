@@ -4,7 +4,7 @@ Ledgerly is a Windows and macOS desktop application being developed for pharmacy
 
 Implemented workflows include company and financial-year setup, classified ledger creation, balanced opening entries, period locks, batch inventory, pack/loose sales, inclusive/exclusive tax pricing, MRP checks, purchase receipts, customer/supplier returns, return quarantine and inspection, journal entries, a trial balance and database backups.
 
-This is an incomplete development build. Full payment allocation, GST reporting, prescription controls, printing, financial-year rollover and verified production installers remain unfinished. See [GOALS.md](GOALS.md) for the intended scope and [TESTING.md](TESTING.md) for pre-push checks.
+This is an incomplete development build. On-account advances, GST reporting, prescription controls, printing, financial-year rollover and verified production installers remain unfinished. See [GOALS.md](GOALS.md) for the intended scope and [TESTING.md](TESTING.md) for pre-push checks.
 
 ## Run locally
 
@@ -43,3 +43,8 @@ Manual Actions runs offer Windows, macOS or both. npm, pip, Electron and install
 
 
 Local operators sign in with administrator, manager, cashier or accountant roles. First launch creates the administrator; no default credentials are seeded. Administrators create operators, reset passwords, change roles and disable access. Role/status/password changes revoke existing sessions, and the last active administrator cannot be disabled. Passwords use salted PBKDF2 hashes; session tokens are stored hashed and expire after eight hours. Sensitive writes are role-checked by the local backend and attributed in its audit table. This remains a loopback-only desktop service; shared-counter networking is not enabled.
+
+
+Invoice settlements support partial or multi-invoice customer receipts, supplier payments, and refunds after returns. Select one party and a cash/bank ledger, allocate exact amounts, then post a balanced voucher. Allocation totals must match the voucher amount; overpayment, cross-party allocation, wrong invoice types and locked dates are rejected. Retry keys prevent duplicate posting. Outstanding balances and allocation history are persisted. This does not yet include on-account advances, write-offs or bank statement reconciliation; invoice parties are still text identities rather than fully linked party masters.
+
+Reference research has reached 54 bill-adjustment-related records and their readable memo fields in the supplied Marg configuration, in addition to its schema dictionary and REA/Ghidra launcher traces. Receipt/adjustment behavior was corroborated against Marg's official [receipt entry](https://care.margcompusoft.com/margerp/voucher-entry/297/1/-receipt) and [bill allocation](https://care.margcompusoft.com/margerp/voucher-entry/29964/1/How-to-adjust-bill-at) documentation. Static reference fields do not establish complete runtime feature coverage.

@@ -4,7 +4,22 @@ render = function () {
   if (!signedIn) return;
   if (page === "operators") return operatorPage();
   authenticatedRender();
+  paintIcons();
   const role = state.operator?.role;
+  document
+    .querySelectorAll(".profile small")
+    .forEach(
+      (e) =>
+        (e.textContent = role
+          ? role[0].toUpperCase() + role.slice(1)
+          : "Operator"),
+    );
+  document
+    .querySelectorAll(".topright .user,.profile .avatar")
+    .forEach(
+      (e) =>
+        (e.textContent = (state.operator?.username || "O")[0].toUpperCase()),
+    );
   document.querySelectorAll("nav button").forEach((b) => {
     const permitted =
       role === "admin" || !["setup", "operators"].includes(b.dataset.page);
@@ -46,7 +61,8 @@ async function loadWorkspace() {
   await api("/api/state");
   signedIn = true;
   document.querySelector("nav").hidden = false;
-  page = state.company || state.operator.role !== "admin" ? "overview" : "setup";
+  page =
+    state.company || state.operator.role !== "admin" ? "overview" : "setup";
   render();
   if (!$("#signout")) {
     const button = document.createElement("button");
@@ -140,3 +156,5 @@ fetch("/api/auth")
     $("#content").textContent =
       "The local database service is unavailable. Restart the desktop app.";
   });
+
+paintIcons();

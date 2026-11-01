@@ -698,4 +698,29 @@ button:disabled {
   cursor: wait;
 }
 
-[hidden] { display: none !important; }
+[hidden] {
+  display: none !important;
+}
+
+/* Keep counter-entry fields readable within the invoice pane. */
+.billgrid .formrow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 2fr);
+  align-items: end;
+}
+.billgrid .formrow label {
+  min-width: 0 !important;
+}
+.billgrid .formrow input,
+.billgrid .formrow select {
+  min-width: 0;
+  width: 100%;
+}
+.billgrid .formrow > .btn {
+  justify-self: start;
+}
+@media (max-width: 600px) {
+  .billgrid .formrow {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
