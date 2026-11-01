@@ -1,71 +1,71 @@
-# Pre-push verification
+# Verification and desktop workflows
 
-## Application changes
+## Before pushing application changes
 
-Run the complete backend suite before pushing changes to Python, transaction rules, database setup or connected UI workflows:
+Run the source checks and all test groups:
 
 ```sh
-python -m unittest discover -s tests -v
+python scripts/ci_checks.py --group all
 ```
 
-**Current requirement: all 73 tests must pass, with no failures, errors or skipped tests.** Keep all existing relevant tests when adding functionality; update this count when the suite grows. Do not add tests solely to reach a count.
+All **73 current tests** must pass, with no errors, failures, unexpected successes, expected failures or skipped tests. Do not add tests merely to reach a count. Source checks validate the **10 JavaScript files**, Python syntax, package/lock consistency and assignment of every test module to a CI group. A new test module must be added to `GROUPS` in `scripts/ci_checks.py`; otherwise source validation fails.
 
-The suite covers purchases/sales/returns, atomic overselling prevention, return limits and rounding, quarantine/inspection, backup preservation, pack conversion, authoritative quotes, MRP limits, inclusive tax, migrations, duplicate submissions, journal balancing, period locks and balanced opening entries. Each protects a real data or money-handling behavior.
+For a focused change, run an individual group with `python scripts/ci_checks.py --group pharmacy`, substituting the group below. Results are written to ignored `reports/*.json`. On Actions, each group also adds its status and elapsed time to the job summary. The original `python -m unittest discover -s tests -v` command remains available, but the CI runner additionally rejects skipped/expected-failure tests.
 
-Also run these **10 JavaScript syntax checks** when changing application or desktop JavaScript:
+| CI group | Tests | Behaviour protected |
+|---|---:|---|
+| `billing-stock` | 18 | Purchases, sales, returns, overselling, MRP, packs, inclusive tax, rounding, balanced journals, periods, migrations and SQLite handle cleanup |
+| `pharmacy` | 11 | Prescription completeness, pharmacist permissions, wholesale licences, supply register retention, patient privacy and barcode identity |
+| `parties-invoices` | 8 | Stable party identity, classifications, duplicate prevention, opening/settlement accounts and immutable saved invoice identity |
+| `payments` | 7 | Partial/multi-invoice allocations, refunds, retries, concurrent clearing, cash/bank ledgers and locked dates |
+| `financial-year` | 6 | Reviewed inventory adjustments, preview purity, archived balances, carry-forward, retained earnings, prior-year invoices and closure validation |
+| `security` | 6 | Bootstrap, login/logout, role-denied writes, password storage, session expiry/revocation, audit and last-administrator protection |
+| `recovery` | 8 | Safe replacement, safety-copy contents, reauthentication, hashes/schema/integrity, import/traversal, session revocation and waiting-request authentication |
+| `counter-recalls` | 6 | Durable holds, atomic sale/retry, recall blocking/closure, multi-batch receipt rollback and supplier-invoice uniqueness |
+| `packaging` | 3 | Process/log cleanup after launch failure, startup crash and failure after readiness; real subprocesses and file deletion are exercised |
+
+For a changed user workflow, exercise the UI with valid and invalid inputs and check persistence after restart. Browser verification should cover medicine/party setup, pharmacist login and prescription supply; multi-batch purchase; reviewed year closing; export; reload/resume held bill; recall/trace/closure; sale and restore/sign-in with expected balances. Backend tests do not establish UI correctness.
+
+## One manually triggered Actions workflow
+
+Use **Actions → Desktop validation → Run workflow**. No push, pull-request, schedule or release trigger is configured. There are no automatic pre-push hooks. A fresh run from `main` uses current settings; re-running an old job keeps its original commit/workflow.
+
+| Mode | Validation | Packaging | Platform selection |
+|---|---|---|---|
+| `fast` | Three packaging-cleanup tests | Backend smoke check and development installer | Windows by default; macOS/both available |
+| `validate` | Source/lock checks, then all nine test groups | None | Selected OS or both |
+| `release-candidate` | Source/lock checks, then all nine groups on **both OSes** | Only after all checks pass: backend smoke checks, installers, checksums and build metadata | Always Windows **and** macOS |
+
+Source checks run once on Ubuntu without installing application dependencies. Platform tests run on the actual Windows/macOS runners, with business areas shown as separate steps. A failing test group does not hide results from subsequent groups; the job remains failed. Failed or skipped validation prevents candidate packaging. Fast builds do not claim full validation.
+
+Concurrency is separated by branch, mode and target. New fast/validation runs supersede older matching runs. Candidate runs are queued rather than cancelled by another candidate, and fast builds cannot cancel candidates. Jobs have explicit timeouts; matrix failures do not cancel the other OS. Actions are pinned to immutable commit hashes; credentials are not persisted in checkout and repository permissions are read-only.
+
+## Build caching and artifacts
+
+The backend cache is keyed by OS, architecture, Python version and backend/UI/build-input hashes. A cache hit skips PyInstaller installation/compilation; the packaged-backend smoke test **always runs**, including on cache hits. A backend/UI/build-input change invalidates that cache. npm, pip, Electron and installer-tool downloads are also cached. A first build or changed source still requires compilation.
+
+Test reports and available build diagnostics are retained for seven days, including failed validation results. Successful installer artifacts include:
+
+- Windows `.exe` or macOS `.dmg`.
+- `SHA256SUMS.txt` covering the installer and metadata.
+- `build-info.json` recording version, commit, platform/architecture, tool versions, validation mode and run identity.
+
+Artifacts are distinguished by mode, OS, architecture, run number and attempt. Fast installers are retained for seven days; candidate installers for 30 days. Checksums identify file contents; they do not replace code signing. Installers remain unsigned. No workflow publishes or deploys releases, and build commands use `--publish never` with publishing disabled in package.json.
+
+## Packaging changes and production acceptance
+
+On each affected target OS:
 
 ```sh
-node --check app/app.js
-node --check app/backend.js
-node --check app/auth.js
-node --check app/payments.js
-node --check app/parties.js
-node --check app/invoices.js
-node --check app/pharmacy.js
-node --check app/workflows.js
-node --check app/icons.js
-node --check desktop/main.cjs
-```
-
-For a changed user workflow, manually exercise it through the UI, including invalid input and persistence after restart. Backend tests do not establish UI correctness.
-
-## Packaging changes
-
-On each affected target OS, package the backend and run **1 packaged-backend smoke test** before producing its installer:
-
-```sh
+python -m pip install -r scripts/requirements-build.txt
 python scripts/build_backend.py
 python scripts/smoke_backend.py
 ```
 
-That test checks startup, HTTP assets, database persistence after restart and cleanup using temporary test data. The backend uses PyInstaller onedir output in `backend-dist/ledgerly-backend/`; Electron copies that directory into `resources/backend/`. This avoids the extra service process created by onefile builds, which could survive launcher termination and lock Windows files. Startup/crash/request-failure paths must release the process and log before temporary-directory deletion. Then build the Windows installer or macOS image and verify launch and shutdown on that OS. Linux checks do not certify either desktop target.
+The smoke check verifies startup, HTTP assets, saving data, restart persistence and process/log cleanup. PyInstaller uses onedir output in `backend-dist/ledgerly-backend/`, copied by Electron to `resources/backend/`. This avoids the extra service process of onefile builds that could survive launcher termination and lock Windows files.
 
-## Documentation and workflow-only changes
+Then build and launch the actual target installer and verify shutdown, printer/scanner behaviour and representative business workflows. Linux checks cannot certify either desktop target. A candidate workflow passing is a validation milestone, not proof that all pharmacy features, statutory requirements, signed distribution or production acceptance are complete.
 
-Check affected links, commands and workflow configuration. Application tests need not be rerun unless executable behavior changed. There are no automatic pre-push hooks or automatic Actions triggers.
+## Workflow-only changes
 
-## GitHub Actions
-
-Keep one workflow: **Desktop validation**. It is triggered exclusively by `workflow_dispatch`, using Actions → Desktop validation → Run workflow. Run titles identify **Fast installer** versus **Full validation**, the selected platform and branch. Re-running an old job keeps its original commit and workflow; start a new run from `main` to use updated build settings. The default is a Windows installer build with three packaging-cleanup regression tests and the packaged-backend smoke test. Enable **Run all application tests and JavaScript checks** to run the full 73-test suite and 10 JavaScript syntax checks on each selected OS instead of only the three cleanup tests. Select macOS or both when needed. The full pre-push checks above still apply to application changes; routine installer builds do not repeat them by default. No push, pull-request, schedule or release trigger is configured. Start it manually when desktop build validation is needed.
-
-Two connection-lifecycle regression tests verify that success commits and failure rolls back while both paths close SQLite handles. These prevent Windows temporary-directory cleanup failures. The suite currently totals 73 tests.
-
-Manual build commands explicitly use `--publish never`, with `build.publish` disabled in package.json. Workflow artifacts do not require a GitHub release token. Select one target platform for a faster focused build; use both when validating cross-platform changes. The packaged backend is cached per OS, architecture, Python version and backend/UI/build-input hashes. A matching cache skips PyInstaller installation and compilation; the packaged-backend smoke test always runs, including on cache hits. Source or build-input changes invalidate the backend cache. npm, pip, Electron and installer download caches remain enabled. The first build after a source change still compiles the backend.
-
-Authentication tests exercise the actual HTTP service: first-owner bootstrap, sign-in/out, role-denied writes, expired sessions, password hashing, audit attribution, last-admin protection and session revocation on operator disable. These protect offline business data rather than testing UI labels.
-
-Settlement tests cover partial receipts, exact invoice clearing, balanced postings, paid-invoice returns/refunds, supplier refunds, retry protection, multi-invoice allocation, cross-party rejection, amount mismatch, concurrent clearing, ledger type validation and period locks. Cashier API checks allow customer receipts while denying supplier payments.
-
-Party-ledger tests cover case-insensitive identity, quote purity, original-party return linkage, classification checks, duplicate prevention and settlement against the exact invoice account. Existing unlinked historical documents retain their original generic accounting rather than being silently reassigned.
-
-Invoice tests verify that the saved company snapshot is not changed by later business-profile edits. Browser review also covers party creation, linked ledger statements, original-party return selection and the printable saved invoice.
-
-Pharmacy tests cover prescription completeness and dates, pharmacist authorization/registration, atomic and retained supply records, wholesale licence checks, barcode identity across batches, privacy filtering, metadata validation and rejection of unsupported Schedule X. Browser verification covers pharmacist creation/login, medicine creation, barcode selection, prescription sale and register display.
-
-
-Recovery tests validate real replacement and safety-backup contents, session revocation, waiting-request authentication, password/name/hash checks, rejected schema/corruption/unbalanced journals, validated import, traversal protection and refusal to downgrade a newer database. Year-close tests check reviewed inventory adjustments, preview purity, archived balances, repeated carry-forward, retained earnings, prior-year invoice settlement/returns, locks, invalid confirmation and premature closure.
-
-Counter workflow tests check durable held bills without financial/stock effects, owner privacy, atomic consumption with sale retry, retained holds after posting failure, recall enforcement in quotes/sales/inspection, authorized closure, and multi-batch supplier invoices with duplicate prevention and rollback. Browser verification must cover receipt entry, close with reviewed inventory, export, reload/resume held bill, recall/trace/closure, sale and restore/sign-in with the expected balances.
-
-
-Three packaging lifecycle tests run real subprocesses and verify log deletion after a startup crash, a failed check after readiness, and a launch failure. On Windows these checks fail if a process or parent file handle remains open.
+Run actionlint, inspect job dependencies/mode conditions/cache keys, and exercise changed CI tooling, including failure paths. Application tests need not be rerun for documentation/YAML-only edits. When changing the grouping runner, run every group and verify failed/skipped tests cannot produce a passing report. When changing installer metadata, independently verify the checksums and missing-output rejection.

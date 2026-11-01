@@ -53,7 +53,15 @@ python scripts/smoke_backend.py
 
 Then run `npm run package:win` on Windows or `npm run package:mac` on macOS. Packaged apps include the backend, so end users do not need Python installed.
 
-GitHub Actions runs exclusively through **Actions → Desktop validation → Run workflow**, with Windows selected by default; macOS and both are also available. Routine installer builds run packaging checks; full application tests and JavaScript checks are an optional manual input. Pushes do not trigger Actions. Dependencies, build tools and matching compiled backends are cached, and the packaged-backend smoke check always runs. Installers are uploaded as workflow artifacts, and publishing is disabled with `--publish never`; no GitHub release token is required. Default icons and skipped signing are expected for these development builds.
+GitHub Actions runs exclusively through **Actions → Desktop validation → Run workflow**. Choose a mode:
+
+| Mode | Checks | Output |
+|---|---|---|
+| `fast` (default) | Packaging cleanup and packaged-backend smoke check | Installer for Windows, macOS or both |
+| `validate` | Source/lock consistency and all grouped application tests on the selected platforms | Check reports, no installers |
+| `release-candidate` | Source checks, all tests on both Windows/macOS, then packaging smoke checks | Both installers, checksums and build metadata |
+
+Candidate packaging is blocked if any validation fails. Reports show results and duration by business area; skipped tests fail full validation. Actions are pinned to commit hashes with read-only repository permissions. Matching compiled backends and download caches reduce repeat builds; cached backends still undergo the smoke check. Artifacts record their source commit and whether full validation ran. Builds remain unsigned, and publishing is disabled with `--publish never`; no GitHub release token is required. Candidate status does not certify pharmacy production readiness.
 
 ## Source layout
 
