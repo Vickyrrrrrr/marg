@@ -20,7 +20,7 @@ def mutate(c,path,d,cents):
   start=date.fromisoformat(d['year_start']);end=date.fromisoformat(d['year_end'])
   if start>=end or (end-start).days>366:raise ValueError('Select a valid financial-year date range')
   old=c.execute('SELECT * FROM company').fetchone()
-  activity=c.execute('SELECT COUNT(*) FROM documents').fetchone()[0] or c.execute('SELECT COUNT(*) FROM opening_batch').fetchone()[0]
+  activity=c.execute('SELECT COUNT(*) FROM documents').fetchone()[0] or c.execute('SELECT COUNT(*) FROM opening_batch').fetchone()[0] or c.execute('SELECT COUNT(*) FROM financial_year').fetchone()[0]
   if old and activity and (old['year_start']!=start.isoformat() or old['year_end']!=end.isoformat()):raise ValueError('Cannot change financial year after posting; rollover is required')
   c.execute('INSERT INTO company(id,name,address,gstin,drug_licence,year_start,year_end) VALUES(1,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET name=excluded.name,address=excluded.address,gstin=excluded.gstin,drug_licence=excluded.drug_licence,year_start=excluded.year_start,year_end=excluded.year_end',(name,address,str(d.get('gstin','')).strip().upper(),str(d.get('drug_licence','')).strip(),start.isoformat(),end.isoformat()))
  elif path in ('/api/ledgers','/api/parties'):
@@ -28,11 +28,13 @@ def mutate(c,path,d,cents):
   if path=='/api/parties' and category not in ('customer','supplier','party'):raise ValueError('Select customer, supplier or both')
   if category not in ('asset','liability','equity','income','expense','customer','supplier','party','cash','bank'):raise ValueError('Select an account category')
   if not name:raise ValueError('Ledger name is required')
+  if category not in ('cash','bank','customer','supplier','party') and (name.lower() in {'sales','purchases','trade receivables','trade payables','input tax pending classification','output tax pending classification','year-end retained earnings','inventory at year close','opening stock expense','closing stock adjustment'} or name.lower().startswith(('party ledger:','cash/bank:'))):raise ValueError('This ledger name is reserved for system postings')
   if c.execute('SELECT 1 FROM ledger WHERE name=? COLLATE NOCASE',(name,)).fetchone():raise ValueError('Ledger name already exists')
   c.execute('INSERT INTO ledger(name,category,phone,address,gstin,drug_licence) VALUES(?,?,?,?,?,?)',(name,category,str(d.get('phone','')).strip(),str(d.get('address','')).strip(),str(d.get('gstin','')).strip().upper(),str(d.get('drug_licence','')).strip()))
  elif path=='/api/openings':
   company=c.execute('SELECT * FROM company').fetchone()
   if not company:raise ValueError('Set up your company first')
+  if c.execute('SELECT 1 FROM financial_year').fetchone():raise ValueError('Opening balances were carried forward from the closed year')
   if c.execute('SELECT 1 FROM opening_batch').fetchone():raise ValueError('Opening balances already posted')
   if c.execute('SELECT 1 FROM documents').fetchone():raise ValueError('Opening balances must be posted before transactions')
   lines=d['lines'];seen=set();values=[]

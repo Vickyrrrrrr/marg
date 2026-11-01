@@ -102,6 +102,21 @@ aside {
   padding: 0 12px;
   margin-bottom: 12px;
 }
+aside > nav {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  scrollbar-width: thin;
+}
+aside > .brand,
+aside > .workspace,
+aside > .navlabel,
+aside > .sidebottom {
+  flex-shrink: 0;
+}
+aside > .sidebottom {
+  padding-top: 16px;
+}
 nav button {
   width: 100%;
   display: flex;

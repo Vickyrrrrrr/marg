@@ -47,6 +47,7 @@ jobs:
           node --check app/parties.js
           node --check app/invoices.js
           node --check app/pharmacy.js
+          node --check app/workflows.js
           node --check app/icons.js
           node --check desktop/main.cjs
       - uses: actions/cache@v4

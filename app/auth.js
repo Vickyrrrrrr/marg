@@ -5,7 +5,12 @@ render = function () {
   if (page === "operators") return operatorPage();
   authenticatedRender();
   paintIcons();
+  document
+    .querySelectorAll("nav button")
+    .forEach((b) => b.classList.toggle("active", b.dataset.page === page));
   const role = state.operator?.role;
+  document.querySelector(".workspace > .avatar").textContent = (state.company
+    ?.name || "L")[0].toUpperCase();
   document
     .querySelectorAll(".profile small")
     .forEach(
@@ -22,7 +27,9 @@ render = function () {
     );
   document.querySelectorAll("nav button").forEach((b) => {
     const permitted =
-      role === "admin" || !["setup", "operators"].includes(b.dataset.page);
+      role === "admin" ||
+      (!["operators", "recovery"].includes(b.dataset.page) &&
+        (b.dataset.page !== "setup" || role === "accountant"));
     b.hidden =
       !permitted ||
       (["cashier", "pharmacist"].includes(role) &&
@@ -31,6 +38,8 @@ render = function () {
   document
     .querySelectorAll("nav button[data-page=prescriptions]")
     .forEach((b) => (b.hidden = !["admin", "pharmacist"].includes(role)));
+  if (page === "inventory")
+    $("#newProduct").hidden = !["admin", "manager"].includes(role);
   document
     .querySelectorAll(".profile b")
     .forEach((e) => (e.textContent = state.operator?.username || "Operator"));
@@ -79,6 +88,7 @@ async function loadWorkspace() {
         body: "{}",
       });
       cart = [];
+      activeHeldBill = null;
       state = { products: [], sales: [], documents: [] };
       showSignIn(false);
     };

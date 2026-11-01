@@ -2,7 +2,7 @@
 import hashlib,hmac,secrets,time
 
 ROLES={
- 'admin':{'sale','purchase','return','purchase_return','inventory','inspection','accounting','backup','users','prescriptions','settlement','receipt','parties'},
+ 'admin':{'sale','purchase','return','purchase_return','inventory','inspection','accounting','backup','users','year-close','recovery','prescriptions','settlement','receipt','parties'},
  'manager':{'sale','purchase','return','purchase_return','inventory','inspection','backup','settlement','receipt','parties'},
  'pharmacist':{'sale','return','receipt','prescriptions'},
  'cashier':{'sale','receipt'},
@@ -55,18 +55,18 @@ def current(c,token):
 
 def authorize(user,path,d):
  if not user:raise PermissionError('Sign in to continue')
- permission={'/api/parties':'parties','/api/products':'inventory','/api/inspection':'inspection','/api/backup':'backup','/api/users':'users','/api/users/update':'users','/api/company':'accounting','/api/ledgers':'accounting','/api/openings':'accounting','/api/period-lock':'accounting'}.get(path)
+ permission={'/api/held':'sale','/api/held-delete':'sale','/api/recall':'inventory','/api/recall-close':'inventory','/api/year-preview':'year-close','/api/year-close':'year-close','/api/backup-inspect':'recovery','/api/backup-import':'recovery','/api/restore':'recovery','/api/parties':'parties','/api/products':'inventory','/api/inspection':'inspection','/api/backup':'backup','/api/users':'users','/api/users/update':'users','/api/company':'accounting','/api/ledgers':'accounting','/api/openings':'accounting','/api/period-lock':'accounting'}.get(path)
  if path=='/api/settlements':permission='receipt' if d.get('kind')=='receipt' else 'settlement'
  if path in ('/api/documents','/api/quote'):permission=d.get('kind')
  if permission not in ROLES.get(user['role'],set()):raise PermissionError('Your role does not allow this operation')
 
 def redact(state,user):
- state={**state,'operator':user}
+ state={**state,'operator':user,'held_bills':[r for r in state.get('held_bills',[]) if r['owner']==user['id'] or user['role']=='admin']}
  if user['role'] not in ('admin','pharmacist'):state={**state,'prescription_register':[]}
  if user['role']=='cashier':
   state={**state,'documents':state['sales'],'outstanding':[r for r in state.get('outstanding',[]) if r['kind']=='sale'],'settlements':[r for r in state.get('settlements',[]) if r['kind']=='receipt'],'journal':[],'accounts':[],'ledgers':[l for l in state['ledgers'] if l['category'] in ('cash','bank','customer','supplier','party')],'openings':[],'inspections':[],'movements':[]}
  if user['role'] not in ('admin','accountant'):
-  state={**state,'journal':[],'accounts':[],'ledgers':[l for l in state['ledgers'] if l['category'] in ('cash','bank','customer','supplier','party')],'openings':[]}
+  state={**state,'closing_stock_reviews':[],'closed_years':[],'year_openings':[],'journal':[],'accounts':[],'ledgers':[l for l in state['ledgers'] if l['category'] in ('cash','bank','customer','supplier','party')],'openings':[]}
  return state
 
 def update_operator(c,d):

@@ -6,6 +6,12 @@ import settlements
 import parties
 import pharmacy
 import security
+import recovery
+import financial_year
+import workflows
+from threading import RLock
+from functools import wraps
+from urllib.parse import urlsplit, parse_qs
 from http.cookies import SimpleCookie
 from http.server import ThreadingHTTPServer, SimpleHTTPRequestHandler
 from pathlib import Path
@@ -13,6 +19,16 @@ from datetime import datetime, date
 from decimal import Decimal, ROUND_HALF_UP
 ROOT = Path(getattr(sys, '_MEIPASS', Path(__file__).resolve().parents[1]))
 DB = Path(os.environ.get('LEDGERLY_DATA_DIR', str(ROOT / 'data'))) / 'erp.sqlite3'
+
+SCHEMA_VERSION = 13
+DATABASE_LOCK = RLock()
+
+def serialized(function):
+    @wraps(function)
+    def invoke(*args, **kwargs):
+        with DATABASE_LOCK:
+            return function(*args, **kwargs)
+    return invoke
 
 class DatabaseConnection(sqlite3.Connection):
     """Commit/rollback on context exit and always release the database handle."""
@@ -29,9 +45,12 @@ def connection():
     c.execute('PRAGMA foreign_keys=ON')
     return c
 
+@serialized
 def init():
-    DB.parent.mkdir(exist_ok=True)
+    DB.parent.mkdir(parents=True, exist_ok=True)
     with connection() as c:
+        if c.execute('PRAGMA user_version').fetchone()[0] > SCHEMA_VERSION:
+            raise ValueError('This database requires a newer Ledgerly application')
         c.executescript('\n CREATE TABLE IF NOT EXISTS products(id TEXT PRIMARY KEY,name TEXT NOT NULL,batch TEXT NOT NULL,expiry TEXT NOT NULL,stock INTEGER NOT NULL CHECK(stock>=0),price INTEGER NOT NULL,tax INTEGER NOT NULL,UNIQUE(name,batch));\n CREATE TABLE IF NOT EXISTS documents(id INTEGER PRIMARY KEY,kind TEXT NOT NULL,party TEXT NOT NULL,date TEXT NOT NULL,total INTEGER NOT NULL,reference INTEGER REFERENCES documents(id));\n CREATE TABLE IF NOT EXISTS lines(id INTEGER PRIMARY KEY,document INTEGER REFERENCES documents(id),product TEXT REFERENCES products(id),qty INTEGER NOT NULL,price INTEGER NOT NULL,tax INTEGER NOT NULL,total INTEGER NOT NULL);\n CREATE TABLE IF NOT EXISTS movements(id INTEGER PRIMARY KEY,document INTEGER REFERENCES documents(id),product TEXT REFERENCES products(id),quantity INTEGER NOT NULL);\n ')
 
         columns = {r[1] for r in c.execute('PRAGMA table_info(products)')}
@@ -44,6 +63,8 @@ def init():
         c.execute('CREATE TABLE IF NOT EXISTS requests(key TEXT PRIMARY KEY,digest TEXT NOT NULL,document INTEGER NOT NULL REFERENCES documents(id))')
         c.execute('CREATE TABLE IF NOT EXISTS journal(id INTEGER PRIMARY KEY,document INTEGER NOT NULL REFERENCES documents(id),account TEXT NOT NULL,debit INTEGER NOT NULL CHECK(debit>=0),credit INTEGER NOT NULL CHECK(credit>=0),CHECK(debit=0 OR credit=0))')
         line_columns={r[1] for r in c.execute('PRAGMA table_info(lines)')}
+        if 'supplier_invoice' not in {r[1] for r in c.execute('PRAGMA table_info(documents)')}:
+            c.execute("ALTER TABLE documents ADD COLUMN supplier_invoice TEXT NOT NULL DEFAULT ''")
         if 'company_snapshot' not in {r[1] for r in c.execute('PRAGMA table_info(documents)')}:
             c.execute('ALTER TABLE documents ADD COLUMN company_snapshot TEXT')
         if 'taxable' not in line_columns:
@@ -53,8 +74,13 @@ def init():
         settlements.initialize(c)
         parties.initialize(c)
         pharmacy.initialize(c)
-        c.execute('PRAGMA user_version=8')
+        recovery.initialize(c)
+        financial_year.initialize(c)
+        workflows.initialize(c)
+        c.execute("CREATE UNIQUE INDEX IF NOT EXISTS supplier_invoice_identity ON documents(party_ledger,supplier_invoice COLLATE NOCASE) WHERE kind='purchase' AND supplier_invoice!='' AND party_ledger IS NOT NULL")
+        c.execute('PRAGMA user_version='+str(SCHEMA_VERSION))
 
+@serialized
 def backup():
     folder = DB.parent / 'backups'
     folder.mkdir(parents=True, exist_ok=True)
@@ -79,13 +105,18 @@ def integer(v):
 
 TRIAL_BALANCE_SQL = """
 SELECT account,SUM(debit) AS debit,SUM(credit) AS credit FROM (
- SELECT account,debit,credit FROM journal
+ SELECT account,debit,credit FROM journal JOIN documents ON documents.id=journal.document
+ WHERE documents.date BETWEEN (SELECT year_start FROM company WHERE id=1) AND (SELECT year_end FROM company WHERE id=1)
  UNION ALL
  SELECT CASE WHEN ledger.category IN ('cash','bank') THEN 'Cash/bank: '||ledger.name WHEN ledger.category IN ('customer','supplier','party') THEN 'Party ledger: '||ledger.id||': '||ledger.name ELSE ledger.name END AS account,
  opening_line.debit,opening_line.credit FROM opening_line JOIN ledger ON ledger.id=opening_line.ledger
+ WHERE NOT EXISTS(SELECT 1 FROM financial_year)
+ UNION ALL
+ SELECT account,debit,credit FROM year_opening WHERE year_start=(SELECT year_start FROM company WHERE id=1)
 ) GROUP BY account ORDER BY account
 """
 
+@serialized
 def snapshot():
     with connection() as c:
         products = [{**dict(r), 'price': r['price'] / 100, 'mrp': None if r['mrp'] is None else r['mrp']/100, 'tax': r['tax'] / 100} for r in c.execute('SELECT * FROM products ORDER BY name')]
@@ -93,12 +124,19 @@ def snapshot():
         for r in c.execute('SELECT * FROM documents ORDER BY id'):
             lines = [{**dict(l), 'name': l['name'], 'price': l['price'] / 100, 'tax': l['tax'] / 100, 'total': l['total'] / 100} for l in c.execute('SELECT lines.*,products.name,products.batch FROM lines JOIN products ON products.id=lines.product WHERE document=?', (r['id'],))]
             docs.append({**dict(r), 'company_snapshot':json.loads(r['company_snapshot']) if r['company_snapshot'] else None, 'customer': r['party'], 'number': r['kind'].upper() + '-' + str(r['id']).zfill(5), 'total': r['total'] / 100, 'lines': lines})
-        return {**business_setup.snapshot(c), **settlements.snapshot(c), 'prescription_register':pharmacy.register(c), 'products': products, 'sales': [d for d in docs if d['kind'] == 'sale'], 'documents': docs, 'accounts': [dict(r) for r in c.execute(TRIAL_BALANCE_SQL)], 'journal': [dict(r) for r in c.execute('SELECT journal.*,documents.party,documents.date,documents.kind FROM journal JOIN documents ON documents.id=document ORDER BY journal.id DESC')], 'unposted_documents': c.execute('SELECT COUNT(*) FROM documents WHERE NOT EXISTS(SELECT 1 FROM journal WHERE document=documents.id)').fetchone()[0], 'inspections': [dict(r) for r in c.execute('SELECT inspections.*,products.name FROM inspections JOIN products ON products.id=product ORDER BY inspections.id DESC')], 'movements': [dict(r) for r in c.execute('SELECT movements.*,products.name FROM movements JOIN products ON product=products.id ORDER BY movements.id DESC')]}
+        return {**business_setup.snapshot(c), **financial_year.snapshot(c), **workflows.snapshot(c), **settlements.snapshot(c), 'prescription_register':pharmacy.register(c), 'products': products, 'sales': [d for d in docs if d['kind'] == 'sale'], 'documents': docs, 'accounts': [dict(r) for r in c.execute(TRIAL_BALANCE_SQL)], 'journal': [dict(r) for r in c.execute('SELECT journal.*,documents.party,documents.date,documents.kind FROM journal JOIN documents ON documents.id=document ORDER BY journal.id DESC')], 'unposted_documents': c.execute('SELECT COUNT(*) FROM documents WHERE NOT EXISTS(SELECT 1 FROM journal WHERE document=documents.id)').fetchone()[0], 'inspections': [dict(r) for r in c.execute('SELECT inspections.*,products.name FROM inspections JOIN products ON products.id=product ORDER BY inspections.id DESC')], 'movements': [dict(r) for r in c.execute('SELECT movements.*,products.name FROM movements JOIN products ON product=products.id ORDER BY movements.id DESC')]}
 
+@serialized
 def mutate(path, d, actor=None):
     with connection() as c:
         c.execute('BEGIN IMMEDIATE')
-        if path == '/api/settlements':
+        if path in ('/api/held','/api/held-delete','/api/recall','/api/recall-close'):
+            workflows.mutate(c,path,d,actor,integer)
+        elif path == '/api/year-preview':
+            return financial_year.preview(c,TRIAL_BALANCE_SQL,d.get('closing_stock'))
+        elif path == '/api/year-close':
+            financial_year.close(c,d,actor,TRIAL_BALANCE_SQL)
+        elif path == '/api/settlements':
             settlements.post(c,d,cents,business_setup.validate_date)
         elif path in ('/api/parties','/api/company','/api/ledgers','/api/openings','/api/period-lock'):
             business_setup.mutate(c,path,d,cents)
@@ -112,6 +150,8 @@ def mutate(path, d, actor=None):
             p = c.execute('SELECT * FROM products WHERE id=?', (pid,)).fetchone()
             if not p or p['quarantine'] < qty:
                 raise ValueError('Quantity exceeds quarantined stock')
+            if disposition == 'release' and workflows.recalled(c,pid):
+                raise ValueError('Recalled stock cannot be released for sale')
             if disposition == 'release' and p['expiry'] and p['expiry'] < date.today().strftime('%Y-%m'):
                 raise ValueError('Expired returns cannot be released')
             c.execute('UPDATE products SET quarantine=quarantine-?,stock=stock+? WHERE id=?', (qty, qty if disposition == 'release' else 0, pid))
@@ -154,6 +194,9 @@ def mutate(path, d, actor=None):
             kind = d['kind']
             if not kind in ('sale', 'purchase', 'return', 'purchase_return'):
                 raise ValueError('Invalid document type')
+            supplier_invoice=d.get('supplier_invoice','') if kind=='purchase' else ''
+            if not isinstance(supplier_invoice,str) or len(supplier_invoice)>120 or any(ord(ch)<32 for ch in supplier_invoice):raise ValueError('Invalid supplier invoice number')
+            supplier_invoice=supplier_invoice.strip()
             items = d['lines']
             if not (items and len(items) <= 500):
                 raise ValueError('Add at least one item')
@@ -186,6 +229,7 @@ def mutate(path, d, actor=None):
                 if kind == 'purchase':
                     price = cents(item['price'])
                 if kind == 'sale':
+                    if workflows.recalled(c,pid):raise ValueError('Recalled batch cannot be sold')
                     if not p['stock'] >= qty:
                         raise ValueError('Insufficient stock')
                     if not (not p['expiry'] or p['expiry'] >= document_date[:7]):
@@ -226,8 +270,13 @@ def mutate(path, d, actor=None):
             total = sum((x[4] for x in computed))
             if path == '/api/quote':
                 return {'total_paise':total,'lines':[{'product':pid,'quantity':qty,'total_paise':amount} for pid,qty,price,tax,amount in computed]}
+            if supplier_invoice and c.execute("SELECT 1 FROM documents WHERE kind='purchase' AND party_ledger=? AND supplier_invoice=? COLLATE NOCASE",(party_ledger,supplier_invoice)).fetchone():raise ValueError('This supplier invoice has already been received')
+            held_id=d.get('draft_id') if kind=='sale' else None
+            if held_id:workflows.held(c,held_id,actor)
             trade,rx=pharmacy.validate_sale(c,{**d,'_party_ledger':party_ledger},actor,document_date,medicine_products) if kind=='sale' else ('retail',None)
             doc = c.execute('INSERT INTO documents(kind,party,date,total,reference,party_ledger) VALUES(?,?,?,?,?,?)', (kind, party, document_date, total, reference if kind in ('return', 'purchase_return') else None,party_ledger)).lastrowid
+            c.execute('UPDATE documents SET supplier_invoice=? WHERE id=?',(supplier_invoice,doc))
+            if held_id:c.execute('DELETE FROM held_bill WHERE id=?',(held_id,))
             if kind=='sale':pharmacy.record(c,doc,trade,rx,actor,medicine_products,{pid:qty for pid,qty,price,tax,total in computed})
             company_snapshot=dict(c.execute('SELECT * FROM company').fetchone())
             c.execute('UPDATE documents SET company_snapshot=? WHERE id=?',(json.dumps(company_snapshot),doc))
@@ -288,6 +337,7 @@ class Handler(SimpleHTTPRequestHandler):
     def valid_host(self):
         return self.headers.get('Host') in ('127.0.0.1:'+str(self.server.server_port),'localhost:'+str(self.server.server_port))
 
+    @serialized
     def do_GET(self):
         if not self.valid_host():return self.answer(403,{'error':'Invalid local host'})
         if self.path == '/api/auth':
@@ -297,6 +347,24 @@ class Handler(SimpleHTTPRequestHandler):
             user=self.user()
             if not user:return self.answer(401,{'error':'Sign in to continue'})
             self.answer(200,security.redact(snapshot(),user))
+        elif urlsplit(self.path).path in ('/api/backups','/api/backup-download'):
+            user=self.user()
+            try:security.authorize(user,'/api/backup',{})
+            except PermissionError as e:return self.answer(403 if user else 401,{'error':str(e)})
+            if self.path=='/api/backups':return self.answer(200,{'backups':recovery.listing(DB)})
+            try:
+                filename=parse_qs(urlsplit(self.path).query).get('filename',[''])[0]
+                path=recovery.location(DB,filename)
+                content=path.read_bytes()
+            except ValueError as e:return self.answer(400,{'error':str(e)})
+            self.send_response(200)
+            self.send_header('Content-Type','application/octet-stream')
+            self.send_header('X-Content-Type-Options','nosniff')
+            self.send_header('Content-Disposition','attachment; filename="'+path.name+'"')
+            self.send_header('Content-Length',str(len(content)))
+            self.send_header('Cache-Control','no-store')
+            self.end_headers()
+            self.wfile.write(content)
         elif self.path == '/api/users':
             user=self.user()
             try:security.authorize(user,self.path,{})
@@ -305,6 +373,7 @@ class Handler(SimpleHTTPRequestHandler):
         else:
             super().do_GET()
 
+    @serialized
     def do_POST(self):
         try:
             if not self.valid_host():return self.answer(403,{'error':'Invalid local host'})
@@ -314,7 +383,7 @@ class Handler(SimpleHTTPRequestHandler):
             if self.headers.get('Content-Type','').split(';')[0]!='application/json':
                 raise ValueError('JSON content type required')
             n = int(self.headers.get('Content-Length', '0'))
-            if not 0 < n < 1000000:raise ValueError('Invalid request size')
+            if not 0 < n < (90000000 if self.path=='/api/backup-import' else 1000000):raise ValueError('Invalid request size')
             d = json.loads(self.rfile.read(n))
             if not isinstance(d,dict):raise ValueError('JSON object required')
             if self.path in ('/api/bootstrap','/api/login'):
@@ -339,10 +408,20 @@ class Handler(SimpleHTTPRequestHandler):
                     else:security.update_operator(c,d)
                     c.execute('INSERT INTO audit(operator,action,created_at) VALUES(?,?,?)',(user['id'],self.path,int(security.time.time())))
                 return self.answer(200,{'ok':True})
+            if self.path in ('/api/backup-inspect','/api/backup-import','/api/restore'):
+                if self.path=='/api/backup-inspect':result=recovery.inspect(DB,d.get('filename'))
+                elif self.path=='/api/backup-import':result=recovery.import_file(DB,d)
+                else:result=recovery.restore(DB,d,user,backup)
+                return self.answer(200,result,'ledgerly_session=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0' if self.path=='/api/restore' else None)
+            if self.path=='/api/year-close':backup()
             result=backup() if self.path == '/api/backup' else mutate(self.path,d,user)
-            self.answer(200,result if self.path in ('/api/quote','/api/backup') else security.redact(result,user))
+            self.answer(200,result if self.path in ('/api/quote','/api/backup','/api/year-preview') else security.redact(result,user))
         except (ValueError, KeyError, TypeError, InvalidOperation, sqlite3.IntegrityError) as e:
             self.answer(400, {'error': str(e) or 'Invalid input'})
+        except PermissionError as e:
+            self.answer(403, {'error':str(e)})
+        except (sqlite3.DatabaseError,OSError):
+            self.answer(500, {'error':'Local database or backup storage is unavailable. Check disk space and file permissions, then retry.'})
 if __name__ == '__main__':
     init()
     http = ThreadingHTTPServer(('127.0.0.1', int(os.environ.get('PORT', '8001'))), Handler)

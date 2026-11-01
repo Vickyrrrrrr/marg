@@ -1,48 +1,7 @@
-const KEY = "ledgerly-demo-v1";
-const seed = {
-  products: [
-    {
-      id: "p1",
-      name: "Paracetamol 500 mg",
-      batch: "PCM-241",
-      expiry: "2027-06",
-      stock: 120,
-      price: 32,
-      tax: 12,
-    },
-    {
-      id: "p2",
-      name: "Vitamin C Tablets",
-      batch: "VIT-108",
-      expiry: "2027-03",
-      stock: 48,
-      price: 145,
-      tax: 12,
-    },
-    {
-      id: "p3",
-      name: "Antiseptic Solution",
-      batch: "ANT-076",
-      expiry: "2026-12",
-      stock: 8,
-      price: 85,
-      tax: 18,
-    },
-    {
-      id: "p4",
-      name: "Digital Thermometer",
-      batch: "THR-052",
-      expiry: "",
-      stock: 22,
-      price: 220,
-      tax: 18,
-    },
-  ],
-  sales: [],
-};
 let state = { products: [], sales: [], documents: [], movements: [] };
 let page = "overview",
   cart = [];
+let renderCart, completeSale;
 const $ = (s) => document.querySelector(s),
   money = (n) =>
     "₹" +
@@ -61,8 +20,7 @@ const $ = (s) => document.querySelector(s),
           '"': "&quot;",
           "'": "&#39;",
         })[c],
-    ),
-  save = () => localStorage.setItem(KEY, JSON.stringify(state));
+    );
 function toast(s) {
   $("#toast").textContent = s;
   $("#toast").style.display = "block";
@@ -70,6 +28,9 @@ function toast(s) {
 }
 function go(p) {
   page = p;
+  document
+    .querySelectorAll("nav button")
+    .forEach((b) => b.classList.toggle("active", b.dataset.page === page));
   render();
 }
 function heading(k, t, d, button = "") {
@@ -146,17 +107,8 @@ function billing() {
       "Build an invoice and keep stock in sync.",
       btn("Sales history", "go('activity')", true),
     ) +
-    `<div class="billgrid"><div><section class="card panel"><div class="panelhead"><div><h2>Sale details</h2><p class="muted">Select a batch and add it to the invoice.</p></div></div><div class="formrow"><label>Customer<input id="customer" placeholder="Walk-in customer"></label><label>Product / batch<select id="productSelect">${state.products.map((p) => `<option value="${esc(p.id)}">${esc(p.name)} · ${esc(p.batch)} (${p.stock} available)</option>`).join("")}</select></label><label style="min-width:80px;flex:0.4">Quantity<input id="addQty" type="number" min="1" step="1" value="1"></label>${btn("Add item", "addItem()")}</div></section><section class="card panel" style="margin-top:18px"><div class="panelhead"><div><h2>Invoice items</h2><p class="muted">Prices are treated as exclusive of GST.</p></div></div><div id="cart"></div></section></div><section class="card panel" style="height:max-content"><div class="panelhead"><div><h2>Summary</h2><p class="muted">Review before completing the sale.</p></div></div><div id="summary"></div><button class="btn" style="width:100%;margin-top:18px" onclick="completeSale()">Complete sale →</button><p class="muted" style="font-size:11px;line-height:1.6;margin:13px 0 0">Saved invoices update the local database and stock ledger.</p></section></div>`
+    `<div class="billgrid"><div><section class="card panel"><div class="panelhead"><div><h2>Sale details</h2><p class="muted">Select a batch and add it to the invoice.</p></div></div><div class="formrow"><label>Customer<input id="customer" placeholder="Walk-in customer"></label><label>Product / batch<select id="productSelect">${state.products.map((p) => `<option value="${esc(p.id)}">${esc(p.name)} · ${esc(p.batch)} (${p.stock} available)</option>`).join("")}</select></label><label style="min-width:80px;flex:0.4">Quantity<input id="addQty" type="number" min="1" step="1" value="1"></label>${btn("Add item", "addItem()")}</div></section><section class="card panel" style="margin-top:18px"><div class="panelhead"><div><h2>Invoice items</h2><p class="muted">Prices use each batch's configured tax basis.</p></div></div><div id="cart"></div></section></div><section class="card panel" style="height:max-content"><div class="panelhead"><div><h2>Summary</h2><p class="muted">Review before completing the sale.</p></div></div><div id="summary"></div><button class="btn" style="width:100%;margin-top:18px" onclick="completeSale()">Complete sale →</button><p class="muted" style="font-size:11px;line-height:1.6;margin:13px 0 0">Saved invoices update the local database and stock ledger.</p></section></div>`
   );
-}
-function renderCart() {
-  let base = cart.reduce((a, l) => a + l.price * l.qty, 0),
-    tax = cart.reduce((a, l) => a + (l.price * l.qty * l.tax) / 100, 0);
-  $("#cart").innerHTML = cart.length
-    ? `<div class="tablewrap"><table><thead><tr><th>Product</th><th>Qty</th><th>Rate</th><th>GST</th><th>Total</th><th></th></tr></thead><tbody>${cart.map((l, i) => `<tr><td><b>${esc(l.name)}</b><br><span class="muted">${esc(l.batch)}</span></td><td>${l.qty}</td><td>${money(l.price)}</td><td>${l.tax}%</td><td>${money(l.qty * l.price * (1 + l.tax / 100))}</td><td><button class="danger" aria-label="Remove item" onclick="removeItem(${i})">✕</button></td></tr>`).join("")}</tbody></table></div>`
-    : '<div class="empty">No items added yet. Select a product above to begin.</div>';
-  $("#summary").innerHTML =
-    `<div class="totals"><span>Subtotal</span><b>${money(base)}</b></div><div class="totals"><span>GST</span><b>${money(tax)}</b></div><div class="totals grand"><span>Total</span><span>${money(base + tax)}</span></div>`;
 }
 function addItem() {
   let p = state.products.find((x) => x.id === $("#productSelect").value),
@@ -174,29 +126,6 @@ function addItem() {
 function removeItem(i) {
   cart.splice(i, 1);
   renderCart();
-}
-function completeSale() {
-  if (!cart.length) return toast("Add an item before completing the sale.");
-  for (const l of cart) {
-    let p = state.products.find((x) => x.id === l.id);
-    if (!p || p.stock < l.qty)
-      return toast("Stock changed. Please review the invoice.");
-  }
-  let total = cart.reduce((a, l) => a + l.price * l.qty * (1 + l.tax / 100), 0);
-  state.sales.push({
-    number: "INV-" + String(state.sales.length + 1).padStart(5, "0"),
-    date: new Date().toLocaleDateString("en-CA"),
-    customer: $("#customer").value.trim() || "Walk-in customer",
-    lines: structuredClone(cart),
-    total: Math.round(total * 100) / 100,
-  });
-  cart.forEach(
-    (l) => (state.products.find((p) => p.id === l.id).stock -= l.qty),
-  );
-  cart = [];
-  save();
-  go("activity");
-  toast("Sale completed and stock updated.");
 }
 function render() {
   document
@@ -224,39 +153,6 @@ function render() {
             `<section class="card panel"><div class="panelhead"><div><h2>All sales</h2><p class="muted">Your completed transactions, newest first.</p></div></div>${salesTable(state.sales.slice().reverse())}</section>`;
   if (page === "inventory") {
     filterProducts();
-    $("#productForm").onsubmit = (e) => {
-      e.preventDefault();
-      let d = new FormData(e.target),
-        stock = Number(d.get("stock")),
-        price = Number(d.get("price")),
-        tax = Number(d.get("tax")),
-        name = d.get("name").trim(),
-        batch = d.get("batch").trim();
-      if (
-        !name ||
-        !batch ||
-        !Number.isSafeInteger(stock) ||
-        stock < 0 ||
-        !Number.isFinite(price) ||
-        price < 0 ||
-        !Number.isFinite(tax) ||
-        tax < 0 ||
-        tax > 100
-      )
-        return toast("Please check all product details.");
-      state.products.push({
-        id: crypto.randomUUID(),
-        name,
-        batch,
-        expiry: d.get("expiry"),
-        stock,
-        price,
-        tax,
-      });
-      save();
-      render();
-      toast("Product batch added.");
-    };
   }
   if (page === "billing") renderCart();
 }

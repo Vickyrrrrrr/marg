@@ -89,6 +89,7 @@ function scanBarcode(event) {
     .filter(
       (p) =>
         p.barcode === barcode &&
+        !activeRecall(p.id) &&
         p.stock > 0 &&
         (!p.expiry || p.expiry >= month),
     )

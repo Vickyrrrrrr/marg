@@ -28,6 +28,8 @@ function paintIcons() {
     operators: "users",
     parties: "users",
     prescriptions: "bill",
+    recovery: "stock",
+    recalls: "list",
   };
   document.querySelectorAll("nav button").forEach((b) => {
     const span = b.querySelector("span");

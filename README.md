@@ -1,21 +1,45 @@
 # Ledgerly
 
-Ledgerly is a Windows and macOS desktop application being developed for pharmacy billing, batch inventory and business accounting. It uses Electron with a local Python backend and SQLite database. Marg ERP is a workflow reference; Ledgerly has its own implementation and interface.
+Ledgerly is an offline desktop application for pharmacy retailers and wholesalers, built for Windows and macOS with Electron, Python and SQLite. Business records stay in the local application-data folder. A separately rented server is not needed for a single desktop. Marg ERP is a workflow reference; Ledgerly uses its own implementation and interface.
 
-Implemented workflows include company and financial-year setup, classified ledger creation, balanced opening entries, period locks, batch inventory, pack/loose sales, inclusive/exclusive tax pricing, MRP checks, purchase receipts, customer/supplier returns, return quarantine and inspection, journal entries, a trial balance and database backups.
+## Implemented workflows
 
-This is an incomplete development build. On-account advances, GST reporting, complete statutory registers, statutory/thermal printing, financial-year rollover and verified production installers remain unfinished. See [GOALS.md](GOALS.md) for the intended scope and [TESTING.md](TESTING.md) for pre-push checks.
+- Company identity, licences, financial-year setup, classified accounts, customer/supplier masters and balanced opening entries.
+- Medicine batches with generic name, strength, manufacturer, schedule, HSN, barcode, expiry, pack size, selling price and MRP. Barcode entry selects an available batch in expiry order for operator review.
+- Pack/loose counter sales, inclusive/exclusive tax arithmetic, stock and expiry checks, retry protection and durable held bills. Held bills do not reserve stock; posting rechecks current conditions.
+- Multi-batch purchase receipts and original-invoice customer/supplier returns. Supplier invoice numbers are checked for duplicates within a supplier ledger. Customer returns enter quarantine for inspection or disposal.
+- Batch recalls with recorded references, reasons and closure findings. Active recalls block sales and quarantine release. Batch history links purchases, supplies and returns without deleting original records.
+- Invoice-linked partial/multi-invoice receipts, supplier payments and refunds, using cash/bank ledgers. Exact allocation, party identity, remaining balances, dates and balanced postings are enforced.
+- Journal, current-year trial balance, party statements and outstanding invoices. Completed years close with a reviewed closing-stock value and valuation reference. The app posts opening/closing inventory adjustments, archives the closing trial balance, transfers income/expense results to retained earnings and carries balance-sheet accounts forward. Stock quantities and unpaid invoices remain available across years.
+- Saved sales invoice display and system printing, with business identity captured when the invoice was posted.
+- Backup creation, export, import, inspection and restore. Restore requires an administrator password and business-name confirmation, saves a safety backup, replaces the database atomically and revokes every session. API requests are serialized with recovery so waiting writes must authenticate against the restored database.
+
+## Pharmacy records and access
+
+First launch creates the administrator; there are no default credentials or seeded business transactions. Administrators manage local administrator, manager, pharmacist, cashier and accountant accounts. Role/status/password changes revoke sessions, and the last active administrator cannot be disabled. Passwords use salted PBKDF2 hashes; sessions expire after eight hours. Backend permissions protect writes and attribute changes to operators.
+
+H/H1 retail posting requires prescription reference/date, patient and prescriber details, and a pharmacist or administrator with a recorded pharmacist registration. The supply register is saved atomically with the invoice. Returns do not erase supply records. Only administrators and pharmacists can access the register; CSV export is available. Held prescription details remain limited to the bill's owner and administrators.
+
+Scheduled wholesale supplies require an administrator/manager and recorded company/customer drug licences. They do not create patient dispensing records. Classification and licence/registration details are entered by operators and are not externally verified. Existing batches default to OTC and require review. Prescription fields are informed by the official [Drugs Rules](https://cdsco.gov.in/opencms/resources/UploadCDSCOWeb/2022/drug_rules/Drugs%20Rules%201945_2024%2009.pdf); this application does not certify statutory compliance.
+
+## Current limits
+
+This remains a development build. Complete GST classification/reporting and filing integrations, Schedule X controls, an authoritative medicine catalogue, statutory/thermal invoice formats, purchase orders and schemes, pricing/discount rules, stocktake and automated stock valuation, on-account advances, bank reconciliation and shared-counter networking remain unfinished. Year-end inventory value must be reviewed and entered by the business; the app does not derive FIFO/weighted-average cost or impairment automatically. Historical unlinked/unposted invoices require reconciliation, and unposted documents block year closure.
+
+Backup import/restore accepts matching database schemas up to 64 MB. Backups contain business records, credentials in hashed form and any prescription records; exported files are not encrypted. Store them securely. Restore brings back the backup's operator credentials. An older app refuses a database marked with a newer schema version.
+
+Windows/macOS installers are unsigned development builds. Production use still requires verified target-OS launch, printer/scanner checks, business-account reconciliation and representative pharmacy acceptance testing. See [GOALS.md](GOALS.md) for the intended scope and [TESTING.md](TESTING.md) for required checks.
 
 ## Run locally
 
-Install Node.js and Python 3.12, then run:
+For development, install Node.js and Python 3.12, then run:
 
 ```sh
 npm ci
 npm start
 ```
 
-For backend/UI development without Electron, run `python backend/server.py` and open `http://127.0.0.1:8001`. Use `python3` where that is your Python command. The desktop app stores its database in the operating system's application-data folder; backend-only development uses `data/erp.sqlite3`.
+For browser development, run `python backend/server.py` and open `http://127.0.0.1:8001`. Use `python3` where appropriate. Backend-only development uses `data/erp.sqlite3`; the desktop app uses the operating system's application-data folder. The HTTP service binds only to loopback.
 
 ## Build desktop installers
 
@@ -27,37 +51,14 @@ python scripts/build_backend.py
 python scripts/smoke_backend.py
 ```
 
-Then run `npm run package:win` on Windows or `npm run package:mac` on macOS. Packaged apps include the backend, so users do not need Python. Builds are unsigned until signing credentials are configured.
+Then run `npm run package:win` on Windows or `npm run package:mac` on macOS. Packaged apps include the backend, so end users do not need Python installed.
 
-GitHub builds run only when someone manually starts **Desktop validation** in the repository's Actions tab. Pushing code does not trigger Actions.
+GitHub Actions runs exclusively through **Actions → Desktop validation → Run workflow**, with Windows, macOS or both selected. Pushes do not trigger Actions. Dependencies and build tools are cached. Installers are uploaded as workflow artifacts, and publishing is disabled with `--publish never`; no GitHub release token is required. Default icons and skipped signing are expected for these development builds.
 
 ## Source layout
 
 - `app/`: interface and styles.
-- `backend/`: local HTTP service, SQLite transactions and business setup.
-- `desktop/`: Electron application entry point.
-- `scripts/`: backend packaging requirements, builder and packaged-app smoke check.
-- `tests/`: database and transaction regression tests.
-
-Manual Actions runs offer Windows, macOS or both. npm, pip, Electron and installer-tool downloads are cached per platform. Installers are uploaded as workflow artifacts; publishing to GitHub Releases is disabled and no GH_TOKEN is required. Default application icons and skipped signing are expected for these unsigned development builds.
-
-
-Local operators sign in with administrator, manager, cashier or accountant roles. First launch creates the administrator; no default credentials are seeded. Administrators create operators, reset passwords, change roles and disable access. Role/status/password changes revoke existing sessions, and the last active administrator cannot be disabled. Passwords use salted PBKDF2 hashes; session tokens are stored hashed and expire after eight hours. Sensitive writes are role-checked by the local backend and attributed in its audit table. This remains a loopback-only desktop service; shared-counter networking is not enabled.
-
-
-Invoice settlements support partial or multi-invoice customer receipts, supplier payments, and refunds after returns. Select one party and a cash/bank ledger, allocate exact amounts, then post a balanced voucher. Allocation totals must match the voucher amount; overpayment, cross-party allocation, wrong invoice types and locked dates are rejected. Retry keys prevent duplicate posting. Outstanding balances and allocation history are persisted. This does not yet include on-account advances, write-offs or bank statement reconciliation; new invoice parties are linked to persistent ledger identities.
-
-Reference research has reached 54 bill-adjustment-related records and their readable memo fields in the supplied Marg configuration, in addition to its schema dictionary and REA/Ghidra launcher traces. Receipt/adjustment behavior was corroborated against Marg's official [receipt entry](https://care.margcompusoft.com/margerp/voucher-entry/297/1/-receipt) and [bill allocation](https://care.margcompusoft.com/margerp/voucher-entry/29964/1/How-to-adjust-bill-at) documentation. Static reference fields do not establish complete runtime feature coverage.
-
-
-Customers and suppliers can be created in the party directory with contact/address/GSTIN details and customer, supplier or shared classification. New typed parties are persisted when an invoice is posted; quotes do not create records. Returns inherit the original party identity, and settlements use that identity rather than a name comparison. Per-party journal accounts reconcile with party opening balances. Historical invoices remain explicitly unlinked until a reconciliation workflow is provided; this migration does not invent past allocations.
-
-
-Saved sales can be opened from Sales history and printed as invoice records using the system print dialog. New invoices capture business identity at posting, so changing the current company profile does not alter historical reprints. This is not yet a statutory GST invoice template: jurisdiction-specific tax classification and thermal-printer formats remain unfinished.
-
-
-Medicine batches now support generic name, strength, manufacturer, HSN, barcode and explicit OTC/H/H1 classification. Barcode entry selects an available, unexpired batch in expiry order for operator review. It never substitutes medicines. Classification is supplied by the operator; existing batches default to OTC and must be reviewed before use.
-
-H/H1 retail posting requires prescription reference/date, patient and prescriber details, and a signed-in pharmacist (or administrator) with a recorded registration. The supply register and invoice are saved atomically; returning stock does not erase the original supply record. Only administrators and pharmacists receive register data. CSV export is available with formula-cell escaping. Pharmacist registration and drug licences are locally recorded, not externally verified. Schedule X and full statutory-compliance certification are not supported.
-
-Scheduled wholesale sales require an administrator/manager plus recorded company and customer drug licences and do not create patient dispensing records. Prescription record fields are informed by the official [Drugs Rules](https://cdsco.gov.in/opencms/resources/UploadCDSCOWeb/2022/drug_rules/Drugs%20Rules%201945_2024%2009.pdf); this build does not claim complete legal compliance or an authoritative drug-schedule catalogue.
+- `backend/`: local service, business rules, accounting, access control and recovery.
+- `desktop/`: Electron entry point.
+- `scripts/`: backend packaging and smoke check.
+- `tests/`: transaction, authorization and recovery regression tests.
