@@ -22,7 +22,7 @@
     ],
     "extraResources": [
       {
-        "from": "backend-dist/",
+        "from": "backend-dist/ledgerly-backend/",
         "to": "backend"
       }
     ],

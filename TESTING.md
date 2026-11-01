@@ -8,7 +8,7 @@ Run the complete backend suite before pushing changes to Python, transaction rul
 python -m unittest discover -s tests -v
 ```
 
-**Current requirement: all 70 backend tests must pass, with no failures, errors or skipped tests.** Keep all existing relevant tests when adding functionality; update this count when the suite grows. Do not add tests solely to reach a count.
+**Current requirement: all 73 tests must pass, with no failures, errors or skipped tests.** Keep all existing relevant tests when adding functionality; update this count when the suite grows. Do not add tests solely to reach a count.
 
 The suite covers purchases/sales/returns, atomic overselling prevention, return limits and rounding, quarantine/inspection, backup preservation, pack conversion, authoritative quotes, MRP limits, inclusive tax, migrations, duplicate submissions, journal balancing, period locks and balanced opening entries. Each protects a real data or money-handling behavior.
 
@@ -38,7 +38,7 @@ python scripts/build_backend.py
 python scripts/smoke_backend.py
 ```
 
-That test checks startup, HTTP assets and database persistence after restart using temporary test data. Then build the Windows installer or macOS image and verify launch and shutdown on that OS. Linux checks do not certify either desktop target.
+That test checks startup, HTTP assets, database persistence after restart and cleanup using temporary test data. The backend uses PyInstaller onedir output in `backend-dist/ledgerly-backend/`; Electron copies that directory into `resources/backend/`. This avoids the extra service process created by onefile builds, which could survive launcher termination and lock Windows files. Startup/crash/request-failure paths must release the process and log before temporary-directory deletion. Then build the Windows installer or macOS image and verify launch and shutdown on that OS. Linux checks do not certify either desktop target.
 
 ## Documentation and workflow-only changes
 
@@ -48,7 +48,7 @@ Check affected links, commands and workflow configuration. Application tests nee
 
 Keep one workflow: **Desktop validation**. It is triggered exclusively by `workflow_dispatch`, using Actions → Desktop validation → Run workflow. It runs the backend tests and packaging smoke test on Windows and macOS, then produces unsigned development installers. No push, pull-request, schedule or release trigger is configured. Start it manually when desktop build validation is needed.
 
-Two connection-lifecycle regression tests verify that success commits and failure rolls back while both paths close SQLite handles. These prevent Windows temporary-directory cleanup failures. The suite currently totals 70 tests.
+Two connection-lifecycle regression tests verify that success commits and failure rolls back while both paths close SQLite handles. These prevent Windows temporary-directory cleanup failures. The suite currently totals 73 tests.
 
 Manual build commands explicitly use `--publish never`, with `build.publish` disabled in package.json. Workflow artifacts do not require a GitHub release token. Select one target platform for a faster focused build; use both when validating cross-platform changes. Caches reduce repeat download time, not the actual compilation work.
 
@@ -66,3 +66,6 @@ Pharmacy tests cover prescription completeness and dates, pharmacist authorizati
 Recovery tests validate real replacement and safety-backup contents, session revocation, waiting-request authentication, password/name/hash checks, rejected schema/corruption/unbalanced journals, validated import, traversal protection and refusal to downgrade a newer database. Year-close tests check reviewed inventory adjustments, preview purity, archived balances, repeated carry-forward, retained earnings, prior-year invoice settlement/returns, locks, invalid confirmation and premature closure.
 
 Counter workflow tests check durable held bills without financial/stock effects, owner privacy, atomic consumption with sale retry, retained holds after posting failure, recall enforcement in quotes/sales/inspection, authorized closure, and multi-batch supplier invoices with duplicate prevention and rollback. Browser verification must cover receipt entry, close with reviewed inventory, export, reload/resume held bill, recall/trace/closure, sale and restore/sign-in with the expected balances.
+
+
+Three packaging lifecycle tests run real subprocesses and verify log deletion after a startup crash, a failed check after readiness, and a launch failure. On Windows these checks fail if a process or parent file handle remains open.
