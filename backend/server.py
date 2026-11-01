@@ -3,6 +3,7 @@ from decimal import InvalidOperation
 from contextlib import closing
 import business_setup
 import settlements
+import parties
 import security
 from http.cookies import SimpleCookie
 from http.server import ThreadingHTTPServer, SimpleHTTPRequestHandler
@@ -42,12 +43,15 @@ def init():
         c.execute('CREATE TABLE IF NOT EXISTS requests(key TEXT PRIMARY KEY,digest TEXT NOT NULL,document INTEGER NOT NULL REFERENCES documents(id))')
         c.execute('CREATE TABLE IF NOT EXISTS journal(id INTEGER PRIMARY KEY,document INTEGER NOT NULL REFERENCES documents(id),account TEXT NOT NULL,debit INTEGER NOT NULL CHECK(debit>=0),credit INTEGER NOT NULL CHECK(credit>=0),CHECK(debit=0 OR credit=0))')
         line_columns={r[1] for r in c.execute('PRAGMA table_info(lines)')}
+        if 'company_snapshot' not in {r[1] for r in c.execute('PRAGMA table_info(documents)')}:
+            c.execute('ALTER TABLE documents ADD COLUMN company_snapshot TEXT')
         if 'taxable' not in line_columns:
             c.execute('ALTER TABLE lines ADD COLUMN taxable INTEGER')
         business_setup.initialize(c)
         security.initialize(c)
         settlements.initialize(c)
-        c.execute('PRAGMA user_version=5')
+        parties.initialize(c)
+        c.execute('PRAGMA user_version=7')
 
 def backup():
     folder = DB.parent / 'backups'
@@ -75,7 +79,7 @@ TRIAL_BALANCE_SQL = """
 SELECT account,SUM(debit) AS debit,SUM(credit) AS credit FROM (
  SELECT account,debit,credit FROM journal
  UNION ALL
- SELECT CASE WHEN ledger.category IN ('cash','bank') THEN 'Cash/bank: '||ledger.name ELSE ledger.name END AS account,
+ SELECT CASE WHEN ledger.category IN ('cash','bank') THEN 'Cash/bank: '||ledger.name WHEN ledger.category IN ('customer','supplier','party') THEN 'Party ledger: '||ledger.id||': '||ledger.name ELSE ledger.name END AS account,
  opening_line.debit,opening_line.credit FROM opening_line JOIN ledger ON ledger.id=opening_line.ledger
 ) GROUP BY account ORDER BY account
 """
@@ -86,7 +90,7 @@ def snapshot():
         docs = []
         for r in c.execute('SELECT * FROM documents ORDER BY id'):
             lines = [{**dict(l), 'name': l['name'], 'price': l['price'] / 100, 'tax': l['tax'] / 100, 'total': l['total'] / 100} for l in c.execute('SELECT lines.*,products.name,products.batch FROM lines JOIN products ON products.id=lines.product WHERE document=?', (r['id'],))]
-            docs.append({**dict(r), 'customer': r['party'], 'number': r['kind'].upper() + '-' + str(r['id']).zfill(5), 'total': r['total'] / 100, 'lines': lines})
+            docs.append({**dict(r), 'company_snapshot':json.loads(r['company_snapshot']) if r['company_snapshot'] else None, 'customer': r['party'], 'number': r['kind'].upper() + '-' + str(r['id']).zfill(5), 'total': r['total'] / 100, 'lines': lines})
         return {**business_setup.snapshot(c), **settlements.snapshot(c), 'products': products, 'sales': [d for d in docs if d['kind'] == 'sale'], 'documents': docs, 'accounts': [dict(r) for r in c.execute(TRIAL_BALANCE_SQL)], 'journal': [dict(r) for r in c.execute('SELECT journal.*,documents.party,documents.date,documents.kind FROM journal JOIN documents ON documents.id=document ORDER BY journal.id DESC')], 'unposted_documents': c.execute('SELECT COUNT(*) FROM documents WHERE NOT EXISTS(SELECT 1 FROM journal WHERE document=documents.id)').fetchone()[0], 'inspections': [dict(r) for r in c.execute('SELECT inspections.*,products.name FROM inspections JOIN products ON products.id=product ORDER BY inspections.id DESC')], 'movements': [dict(r) for r in c.execute('SELECT movements.*,products.name FROM movements JOIN products ON product=products.id ORDER BY movements.id DESC')]}
 
 def mutate(path, d, actor=None):
@@ -94,7 +98,7 @@ def mutate(path, d, actor=None):
         c.execute('BEGIN IMMEDIATE')
         if path == '/api/settlements':
             settlements.post(c,d,cents,business_setup.validate_date)
-        elif path in ('/api/company','/api/ledgers','/api/openings','/api/period-lock'):
+        elif path in ('/api/parties','/api/company','/api/ledgers','/api/openings','/api/period-lock'):
             business_setup.mutate(c,path,d,cents)
         elif path == '/api/inspection':
             pid = d['product']
@@ -149,7 +153,7 @@ def mutate(path, d, actor=None):
             items = d['lines']
             if not (items and len(items) <= 500):
                 raise ValueError('Add at least one item')
-            party = str(d.get('party', '')).strip() or 'Walk-in customer'
+            party_ledger,party = parties.resolve(c,d,kind,create=path=='/api/documents')
             reference = d.get('reference')
             seen = set()
             computed = []
@@ -216,7 +220,9 @@ def mutate(path, d, actor=None):
             total = sum((x[4] for x in computed))
             if path == '/api/quote':
                 return {'total_paise':total,'lines':[{'product':pid,'quantity':qty,'total_paise':amount} for pid,qty,price,tax,amount in computed]}
-            doc = c.execute('INSERT INTO documents(kind,party,date,total,reference) VALUES(?,?,?,?,?)', (kind, party, document_date, total, reference if kind in ('return', 'purchase_return') else None)).lastrowid
+            doc = c.execute('INSERT INTO documents(kind,party,date,total,reference,party_ledger) VALUES(?,?,?,?,?,?)', (kind, party, document_date, total, reference if kind in ('return', 'purchase_return') else None,party_ledger)).lastrowid
+            company_snapshot=dict(c.execute('SELECT * FROM company').fetchone())
+            c.execute('UPDATE documents SET company_snapshot=? WHERE id=?',(json.dumps(company_snapshot),doc))
             if request_key:
                 c.execute('INSERT INTO requests VALUES(?,?,?)',(request_key,digest,doc))
             for index, (pid, qty, price, tax, line_total) in enumerate(computed):
@@ -231,9 +237,9 @@ def mutate(path, d, actor=None):
             net = sum(taxable_amounts)
             tax_amount = total-net
             if kind in ('sale','return'):
-                postings=[('Trade receivables',total,0),('Sales',0,net),('Output tax pending classification',0,tax_amount)]
+                postings=[(parties.account(c,party_ledger,'Trade receivables'),total,0),('Sales',0,net),('Output tax pending classification',0,tax_amount)]
             else:
-                postings=[('Purchases',net,0),('Input tax pending classification',tax_amount,0),('Trade payables',0,total)]
+                postings=[('Purchases',net,0),('Input tax pending classification',tax_amount,0),(parties.account(c,party_ledger,'Trade payables'),0,total)]
             if kind in ('return','purchase_return'):
                 postings=[(account,credit,debit) for account,debit,credit in postings]
             if sum(debit-credit for account,debit,credit in postings)!=0:

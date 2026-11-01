@@ -724,3 +724,47 @@ button:disabled {
     grid-template-columns: minmax(0, 1fr);
   }
 }
+
+@media print {
+  @page {
+    size: A4;
+    margin: 12mm;
+  }
+  body,
+  main {
+    display: block;
+    background: white;
+    color: black;
+  }
+  aside,
+  header,
+  .print-actions,
+  #toast {
+    display: none !important;
+  }
+  main {
+    margin: 0;
+    width: 100%;
+  }
+  #content {
+    padding: 0;
+    max-width: none;
+  }
+  #invoiceDocument {
+    border: 0;
+    padding: 0;
+  }
+  #invoiceDocument p {
+    overflow-wrap: anywhere;
+  }
+  #invoiceDocument .tablewrap {
+    overflow: visible;
+  }
+  #invoiceDocument th {
+    background: white;
+    color: black;
+  }
+  #invoiceDocument tr {
+    break-inside: avoid;
+  }
+}

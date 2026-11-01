@@ -1,5 +1,6 @@
 """Invoice-linked receipts, supplier payments and refunds in integer paise."""
 import hashlib,json
+import parties
 
 KINDS={'receipt':('sale',1),'payment':('purchase',1),'refund':('sale',-1),'supplier_refund':('purchase',-1)}
 
@@ -20,7 +21,7 @@ def outstanding(c,invoice):
 def snapshot(c):
  balances=[]
  for row in c.execute("SELECT id FROM documents WHERE kind IN ('sale','purchase') ORDER BY id DESC"):
-  doc,balance=outstanding(c,row['id']);balances.append({'invoice':doc['id'],'number':doc['kind'].upper()+'-'+str(doc['id']).zfill(5),'kind':doc['kind'],'party':doc['party'],'date':doc['date'],'total_paise':doc['total'],'balance_paise':balance})
+  doc,balance=outstanding(c,row['id']);balances.append({'invoice':doc['id'],'number':doc['kind'].upper()+'-'+str(doc['id']).zfill(5),'kind':doc['kind'],'party':doc['party'],'party_ledger':doc['party_ledger'],'date':doc['date'],'total_paise':doc['total'],'balance_paise':balance})
  rows=[dict(r) for r in c.execute('SELECT settlement.*,documents.kind,documents.date,documents.party,ledger.name AS cash_account FROM settlement JOIN documents ON documents.id=settlement.voucher JOIN settlement_account ON settlement_account.voucher=documents.id JOIN ledger ON ledger.id=settlement_account.ledger ORDER BY voucher DESC')]
  return {'outstanding':balances,'settlements':rows}
 
@@ -39,7 +40,7 @@ def post(c,d,cents,validate_date):
  if not ledger:raise ValueError('Select a cash or bank ledger')
  allocations=d.get('allocations')
  if not isinstance(allocations,list) or not 1<=len(allocations)<=500:raise ValueError('Allocate at least one invoice')
- source_kind,direction=KINDS[kind];party=None;seen=set();lines=[]
+ source_kind,direction=KINDS[kind];party=None;identity=None;party_ledger=None;seen=set();lines=[]
  for row in allocations:
   invoice=int(row['invoice']);amount=cents(row['amount'])
   if invoice in seen or amount<=0:raise ValueError('Use each invoice once with a positive amount')
@@ -47,17 +48,18 @@ def post(c,d,cents,validate_date):
   if doc['kind']!=source_kind:raise ValueError('Invoice type does not match settlement')
   if direction*balance<=0 or amount>direction*balance:raise ValueError('Allocation exceeds the remaining invoice balance')
   if doc['date']>day:raise ValueError('Settlement cannot precede invoice date')
-  if party is None:party=doc['party']
-  if doc['party']!=party:raise ValueError('Allocate invoices for one party per voucher')
+  doc_identity=('ledger',doc['party_ledger']) if doc['party_ledger'] is not None else ('legacy',doc['party'])
+  if party is None:party=doc['party'];identity=doc_identity;party_ledger=doc['party_ledger']
+  if doc_identity!=identity:raise ValueError('Allocate invoices for one party ledger per voucher')
   if not c.execute('SELECT 1 FROM journal WHERE document=?',(invoice,)).fetchone():raise ValueError('Reconcile this legacy invoice before settlement')
   lines.append((invoice,amount))
  total=sum(amount for invoice,amount in lines)
  if cents(d.get('amount',0))!=total:raise ValueError('Allocated amounts must equal the voucher amount')
- voucher=c.execute('INSERT INTO documents(kind,party,date,total) VALUES(?,?,?,?)',(kind,party,day,total)).lastrowid
+ voucher=c.execute('INSERT INTO documents(kind,party,date,total,party_ledger) VALUES(?,?,?,?,?)',(kind,party,day,total,party_ledger)).lastrowid
  c.execute('INSERT INTO settlement_account VALUES(?,?)',(voucher,ledger['id']))
  c.executemany('INSERT INTO settlement VALUES(?,?,?,?)',[(voucher,invoice,amount,direction) for invoice,amount in lines])
  # Qualify cash/bank accounts so an account named "Sales" cannot merge into sales revenue.
- cash='Cash/bank: '+ledger['name'];control='Trade receivables' if source_kind=='sale' else 'Trade payables'
+ cash='Cash/bank: '+ledger['name'];control=parties.account(c,party_ledger,'Trade receivables' if source_kind=='sale' else 'Trade payables')
  incoming=kind in ('receipt','supplier_refund')
  postings=[(cash,total,0),(control,0,total)] if incoming else [(control,total,0),(cash,0,total)]
  for account,debit,credit in postings:c.execute('INSERT INTO journal(document,account,debit,credit) VALUES(?,?,?,?)',(voucher,account,debit,credit))
