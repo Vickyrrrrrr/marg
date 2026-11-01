@@ -53,7 +53,7 @@ python scripts/smoke_backend.py
 
 Then run `npm run package:win` on Windows or `npm run package:mac` on macOS. Packaged apps include the backend, so end users do not need Python installed.
 
-GitHub Actions runs exclusively through **Actions → Desktop validation → Run workflow**, with Windows, macOS or both selected. Pushes do not trigger Actions. Dependencies and build tools are cached. Installers are uploaded as workflow artifacts, and publishing is disabled with `--publish never`; no GitHub release token is required. Default icons and skipped signing are expected for these development builds.
+GitHub Actions runs exclusively through **Actions → Desktop validation → Run workflow**, with Windows selected by default; macOS and both are also available. Routine installer builds run packaging checks; full application tests and JavaScript checks are an optional manual input. Pushes do not trigger Actions. Dependencies, build tools and matching compiled backends are cached, and the packaged-backend smoke check always runs. Installers are uploaded as workflow artifacts, and publishing is disabled with `--publish never`; no GitHub release token is required. Default icons and skipped signing are expected for these development builds.
 
 ## Source layout
 
