@@ -25,9 +25,12 @@ render = function () {
       role === "admin" || !["setup", "operators"].includes(b.dataset.page);
     b.hidden =
       !permitted ||
-      (role === "cashier" &&
+      (["cashier", "pharmacist"].includes(role) &&
         ["accounts", "operations"].includes(b.dataset.page));
   });
+  document
+    .querySelectorAll("nav button[data-page=prescriptions]")
+    .forEach((b) => (b.hidden = !["admin", "pharmacist"].includes(role)));
   document
     .querySelectorAll(".profile b")
     .forEach((e) => (e.textContent = state.operator?.username || "Operator"));
@@ -93,16 +96,24 @@ async function operatorPage() {
       "Operators",
       "Administrator, manager, cashier and accountant roles are enforced by the backend.",
     ) +
-    `<section class="card panel"><table><thead><tr><th>Operator</th><th>Role</th><th>Status</th></tr></thead><tbody>${result.users.map((u) => `<tr><td>${esc(u.username)}</td><td>${esc(u.role)}</td><td>${u.active ? "Active" : "Disabled"}</td></tr>`).join("")}</tbody></table><h2 style="margin-top:24px">Create operator</h2><form id="operatorForm" class="formgrid"><label>Name<input name="username" required maxlength="80" autocomplete="off"></label><label>Role<select name="role"><option>cashier</option><option>manager</option><option>accountant</option><option>admin</option></select></label><label class="wide">Password<input type="password" name="password" required minlength="12" maxlength="256" autocomplete="new-password"></label><div class="wide"><button class="btn">Create operator</button></div><p id="operatorError" role="alert"></p></form></section>`;
+    `<section class="card panel"><table><thead><tr><th>Operator</th><th>Role</th><th>Status</th></tr></thead><tbody>${result.users.map((u) => `<tr><td>${esc(u.username)}</td><td>${esc(u.role)}</td><td>${u.active ? "Active" : "Disabled"}</td></tr>`).join("")}</tbody></table><h2 style="margin-top:24px">Create operator</h2><form id="operatorForm" class="formgrid"><label>Name<input name="username" required maxlength="80" autocomplete="off"></label><label>Role<select name="role"><option>cashier</option><option>manager</option><option>accountant</option><option>pharmacist</option><option>admin</option></select></label><label class="wide">Password<input type="password" name="password" required minlength="12" maxlength="256" autocomplete="new-password"></label><div class="wide"><button class="btn">Create operator</button></div><p id="operatorError" role="alert"></p></form></section>`;
   $("#content").insertAdjacentHTML(
     "beforeend",
-    `<section class="card panel" style="margin-top:20px"><h2>Update access</h2><p class="muted">Saving revokes this operator's sessions. Keep at least one active administrator.</p><form id="accessForm" class="formgrid"><label>Operator<select name="id">${result.users.map((u) => `<option value="${u.id}">${esc(u.username)}</option>`).join("")}</select></label><label>Role<select name="role">${["cashier", "manager", "accountant", "admin"].map((r) => `<option>${r}</option>`).join("")}</select></label><label>Status<select name="active"><option value="true">Active</option><option value="false">Disabled</option></select></label><label>New password (leave blank to keep)<input name="password" type="password" minlength="12" autocomplete="new-password"></label><div class="wide"><button class="btn">Save access</button></div><p id="accessError" role="alert"></p></form></section>`,
+    `<section class="card panel" style="margin-top:20px"><h2>Update access</h2><p class="muted">Saving revokes this operator's sessions. Keep at least one active administrator.</p><form id="accessForm" class="formgrid"><label>Operator<select name="id">${result.users.map((u) => `<option value="${u.id}">${esc(u.username)}</option>`).join("")}</select></label><label>Role<select name="role">${["cashier", "manager", "accountant", "pharmacist", "admin"].map((r) => `<option>${r}</option>`).join("")}</select></label><label>Status<select name="active"><option value="true">Active</option><option value="false">Disabled</option></select></label><label>New password (leave blank to keep)<input name="password" type="password" minlength="12" autocomplete="new-password"></label><div class="wide"><button class="btn">Save access</button></div><p id="accessError" role="alert"></p></form></section>`,
   );
+  for (const id of ["operatorForm", "accessForm"])
+    document
+      .querySelector("#" + id + " .wide")
+      .insertAdjacentHTML(
+        "beforebegin",
+        '<label>Pharmacist registration (required for pharmacist role)<input name="registration" maxlength="160"></label>',
+      );
   const syncAccess = () => {
     const user = result.users.find(
       (u) => String(u.id) === $("#accessForm [name=id]").value,
     );
     $("#accessForm [name=role]").value = user.role;
+    $("#accessForm [name=registration]").value = user.registration || "";
     $("#accessForm [name=active]").value = String(Boolean(user.active));
   };
   $("#accessForm [name=id]").onchange = syncAccess;

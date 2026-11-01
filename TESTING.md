@@ -8,11 +8,11 @@ Run the complete backend suite before pushing changes to Python, transaction rul
 python -m unittest discover -s tests -v
 ```
 
-**Current requirement: all 39 backend tests must pass, with no failures, errors or skipped tests.** Keep all existing relevant tests when adding functionality; update this count when the suite grows. Do not add tests solely to reach a count.
+**Current requirement: all 50 backend tests must pass, with no failures, errors or skipped tests.** Keep all existing relevant tests when adding functionality; update this count when the suite grows. Do not add tests solely to reach a count.
 
 The suite covers purchases/sales/returns, atomic overselling prevention, return limits and rounding, quarantine/inspection, backup preservation, pack conversion, authoritative quotes, MRP limits, inclusive tax, migrations, duplicate submissions, journal balancing, period locks and balanced opening entries. Each protects a real data or money-handling behavior.
 
-Also run these **8 JavaScript syntax checks** when changing application or desktop JavaScript:
+Also run these **9 JavaScript syntax checks** when changing application or desktop JavaScript:
 
 ```sh
 node --check app/app.js
@@ -21,6 +21,7 @@ node --check app/auth.js
 node --check app/payments.js
 node --check app/parties.js
 node --check app/invoices.js
+node --check app/pharmacy.js
 node --check app/icons.js
 node --check desktop/main.cjs
 ```
@@ -46,7 +47,7 @@ Check affected links, commands and workflow configuration. Application tests nee
 
 Keep one workflow: **Desktop validation**. It is triggered exclusively by `workflow_dispatch`, using Actions → Desktop validation → Run workflow. It runs the backend tests and packaging smoke test on Windows and macOS, then produces unsigned development installers. No push, pull-request, schedule or release trigger is configured. Start it manually when desktop build validation is needed.
 
-Two connection-lifecycle regression tests verify that success commits and failure rolls back while both paths close SQLite handles. These prevent Windows temporary-directory cleanup failures. The suite currently totals 39 tests.
+Two connection-lifecycle regression tests verify that success commits and failure rolls back while both paths close SQLite handles. These prevent Windows temporary-directory cleanup failures. The suite currently totals 50 tests.
 
 Manual build commands explicitly use `--publish never`, with `build.publish` disabled in package.json. Workflow artifacts do not require a GitHub release token. Select one target platform for a faster focused build; use both when validating cross-platform changes. Caches reduce repeat download time, not the actual compilation work.
 
@@ -57,3 +58,5 @@ Settlement tests cover partial receipts, exact invoice clearing, balanced postin
 Party-ledger tests cover case-insensitive identity, quote purity, original-party return linkage, classification checks, duplicate prevention and settlement against the exact invoice account. Existing unlinked historical documents retain their original generic accounting rather than being silently reassigned.
 
 Invoice tests verify that the saved company snapshot is not changed by later business-profile edits. Browser review also covers party creation, linked ledger statements, original-party return selection and the printable saved invoice.
+
+Pharmacy tests cover prescription completeness and dates, pharmacist authorization/registration, atomic and retained supply records, wholesale licence checks, barcode identity across batches, privacy filtering, metadata validation and rejection of unsupported Schedule X. Browser verification covers pharmacist creation/login, medicine creation, barcode selection, prescription sale and register display.

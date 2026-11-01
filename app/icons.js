@@ -27,6 +27,7 @@ function paintIcons() {
     payments: "payments",
     operators: "users",
     parties: "users",
+    prescriptions: "bill",
   };
   document.querySelectorAll("nav button").forEach((b) => {
     const span = b.querySelector("span");

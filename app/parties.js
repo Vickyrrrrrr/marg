@@ -8,7 +8,9 @@ function partiesPage() {
     .querySelectorAll("nav button")
     .forEach((b) => b.classList.toggle("active", b.dataset.page === "parties"));
   $("#crumb").textContent = "Customers & suppliers";
-  const editable = state.operator?.role !== "cashier";
+  const editable = ["admin", "manager", "accountant"].includes(
+    state.operator?.role,
+  );
   $("#content").innerHTML =
     heading(
       "PARTY LEDGERS",

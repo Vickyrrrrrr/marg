@@ -125,7 +125,12 @@ function filterProducts() {
   let q = ($("#search")?.value || "").toLowerCase();
   $("#productRows").innerHTML =
     state.products
-      .filter((p) => (p.name + " " + p.batch).toLowerCase().includes(q))
+      .filter((p) =>
+        [p.name, p.batch, p.generic_name, p.strength, p.manufacturer, p.barcode]
+          .join(" ")
+          .toLowerCase()
+          .includes(q),
+      )
       .map(
         (p) =>
           `<tr><td><b>${esc(p.name)}</b></td><td>${esc(p.batch)}</td><td>${esc(p.expiry || "—")}</td><td>${p.stock} units</td><td>${money(p.price)}</td><td>${p.tax}%</td><td><span class="badge ${p.stock <= 10 || due(p) ? "warn" : ""}">${p.stock <= 10 ? "Low stock" : due(p) ? "Check expiry" : "In stock"}</span></td></tr>`,

@@ -29,7 +29,7 @@ def mutate(c,path,d,cents):
   if category not in ('asset','liability','equity','income','expense','customer','supplier','party','cash','bank'):raise ValueError('Select an account category')
   if not name:raise ValueError('Ledger name is required')
   if c.execute('SELECT 1 FROM ledger WHERE name=? COLLATE NOCASE',(name,)).fetchone():raise ValueError('Ledger name already exists')
-  c.execute('INSERT INTO ledger(name,category,phone,address,gstin) VALUES(?,?,?,?,?)',(name,category,str(d.get('phone','')).strip(),str(d.get('address','')).strip(),str(d.get('gstin','')).strip().upper()))
+  c.execute('INSERT INTO ledger(name,category,phone,address,gstin,drug_licence) VALUES(?,?,?,?,?,?)',(name,category,str(d.get('phone','')).strip(),str(d.get('address','')).strip(),str(d.get('gstin','')).strip().upper(),str(d.get('drug_licence','')).strip()))
  elif path=='/api/openings':
   company=c.execute('SELECT * FROM company').fetchone()
   if not company:raise ValueError('Set up your company first')

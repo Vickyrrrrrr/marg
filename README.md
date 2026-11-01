@@ -4,7 +4,7 @@ Ledgerly is a Windows and macOS desktop application being developed for pharmacy
 
 Implemented workflows include company and financial-year setup, classified ledger creation, balanced opening entries, period locks, batch inventory, pack/loose sales, inclusive/exclusive tax pricing, MRP checks, purchase receipts, customer/supplier returns, return quarantine and inspection, journal entries, a trial balance and database backups.
 
-This is an incomplete development build. On-account advances, GST reporting, prescription controls, statutory/thermal printing, financial-year rollover and verified production installers remain unfinished. See [GOALS.md](GOALS.md) for the intended scope and [TESTING.md](TESTING.md) for pre-push checks.
+This is an incomplete development build. On-account advances, GST reporting, complete statutory registers, statutory/thermal printing, financial-year rollover and verified production installers remain unfinished. See [GOALS.md](GOALS.md) for the intended scope and [TESTING.md](TESTING.md) for pre-push checks.
 
 ## Run locally
 
@@ -54,3 +54,10 @@ Customers and suppliers can be created in the party directory with contact/addre
 
 
 Saved sales can be opened from Sales history and printed as invoice records using the system print dialog. New invoices capture business identity at posting, so changing the current company profile does not alter historical reprints. This is not yet a statutory GST invoice template: jurisdiction-specific tax classification and thermal-printer formats remain unfinished.
+
+
+Medicine batches now support generic name, strength, manufacturer, HSN, barcode and explicit OTC/H/H1 classification. Barcode entry selects an available, unexpired batch in expiry order for operator review. It never substitutes medicines. Classification is supplied by the operator; existing batches default to OTC and must be reviewed before use.
+
+H/H1 retail posting requires prescription reference/date, patient and prescriber details, and a signed-in pharmacist (or administrator) with a recorded registration. The supply register and invoice are saved atomically; returning stock does not erase the original supply record. Only administrators and pharmacists receive register data. CSV export is available with formula-cell escaping. Pharmacist registration and drug licences are locally recorded, not externally verified. Schedule X and full statutory-compliance certification are not supported.
+
+Scheduled wholesale sales require an administrator/manager plus recorded company and customer drug licences and do not create patient dispensing records. Prescription record fields are informed by the official [Drugs Rules](https://cdsco.gov.in/opencms/resources/UploadCDSCOWeb/2022/drug_rules/Drugs%20Rules%201945_2024%2009.pdf); this build does not claim complete legal compliance or an authoritative drug-schedule catalogue.

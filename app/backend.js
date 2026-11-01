@@ -54,6 +54,11 @@ completeSale = async function () {
     await api("/api/documents", {
       kind: "sale",
       party: $("#customer").value,
+      trade: $("#trade")?.value || "retail",
+      prescription:
+        typeof prescriptionPayload === "function"
+          ? prescriptionPayload()
+          : null,
       lines: cart.map((l) => ({ product: l.id, qty: l.qty })),
     });
     cart = [];
@@ -268,6 +273,9 @@ completeSale = async function () {
   const payload = {
     kind: "sale",
     party: $("#customer").value,
+    trade: $("#trade")?.value || "retail",
+    prescription:
+      typeof prescriptionPayload === "function" ? prescriptionPayload() : null,
     lines: cart.map((l) => ({ product: l.id, qty: l.qty })),
   };
   const fingerprint = JSON.stringify(payload);

@@ -2,8 +2,9 @@
 import hashlib,hmac,secrets,time
 
 ROLES={
- 'admin':{'sale','purchase','return','purchase_return','inventory','inspection','accounting','backup','users','settlement','receipt','parties'},
+ 'admin':{'sale','purchase','return','purchase_return','inventory','inspection','accounting','backup','users','prescriptions','settlement','receipt','parties'},
  'manager':{'sale','purchase','return','purchase_return','inventory','inspection','backup','settlement','receipt','parties'},
+ 'pharmacist':{'sale','return','receipt','prescriptions'},
  'cashier':{'sale','receipt'},
  'accountant':{'accounting','backup','settlement','receipt','parties'},
 }
@@ -14,6 +15,8 @@ def initialize(c):
  CREATE TABLE IF NOT EXISTS session(token_hash TEXT PRIMARY KEY,operator INTEGER NOT NULL REFERENCES operator(id),expires INTEGER NOT NULL);
  CREATE TABLE IF NOT EXISTS audit(id INTEGER PRIMARY KEY,operator INTEGER NOT NULL REFERENCES operator(id),action TEXT NOT NULL,created_at INTEGER NOT NULL);
  ''')
+ if 'registration' not in {r[1] for r in c.execute('PRAGMA table_info(operator)')}:c.execute("ALTER TABLE operator ADD COLUMN registration TEXT NOT NULL DEFAULT ''")
+
 
 def password_hash(password,salt):
  return hashlib.pbkdf2_hmac('sha256',password.encode(),bytes.fromhex(salt),600000).hex()
@@ -23,8 +26,11 @@ def create_operator(c,d):
  if not username or len(username)>80:raise ValueError('Enter an operator name of 1–80 characters')
  if not isinstance(password,str) or not 12<=len(password)<=256:raise ValueError('Use a password of 12–256 characters')
  if role not in ROLES:raise ValueError('Select a supported role')
+ registration=str(d.get('registration','')).strip()
+ if len(registration)>160:raise ValueError('Registration is too long')
+ if role=='pharmacist' and not registration:raise ValueError('Pharmacist registration is required')
  salt=secrets.token_hex(16)
- c.execute('INSERT INTO operator(username,password_hash,salt,role) VALUES(?,?,?,?)',(username,password_hash(password,salt),salt,role))
+ c.execute('INSERT INTO operator(username,password_hash,salt,role,registration) VALUES(?,?,?,?,?)',(username,password_hash(password,salt),salt,role,registration))
 
 def login(c,d):
  username=str(d.get('username','')).strip();password=d.get('password','')
@@ -44,7 +50,7 @@ def login(c,d):
 
 def current(c,token):
  if not token:return None
- row=c.execute('SELECT operator.id,username,role FROM session JOIN operator ON operator.id=session.operator WHERE token_hash=? AND expires>? AND active=1',(hashlib.sha256(token.encode()).hexdigest(),int(time.time()))).fetchone()
+ row=c.execute('SELECT operator.id,username,role,registration FROM session JOIN operator ON operator.id=session.operator WHERE token_hash=? AND expires>? AND active=1',(hashlib.sha256(token.encode()).hexdigest(),int(time.time()))).fetchone()
  return dict(row) if row else None
 
 def authorize(user,path,d):
@@ -56,6 +62,7 @@ def authorize(user,path,d):
 
 def redact(state,user):
  state={**state,'operator':user}
+ if user['role'] not in ('admin','pharmacist'):state={**state,'prescription_register':[]}
  if user['role']=='cashier':
   state={**state,'documents':state['sales'],'outstanding':[r for r in state.get('outstanding',[]) if r['kind']=='sale'],'settlements':[r for r in state.get('settlements',[]) if r['kind']=='receipt'],'journal':[],'accounts':[],'ledgers':[l for l in state['ledgers'] if l['category'] in ('cash','bank','customer','supplier','party')],'openings':[],'inspections':[],'movements':[]}
  if user['role'] not in ('admin','accountant'):
@@ -65,14 +72,17 @@ def redact(state,user):
 def update_operator(c,d):
  user=c.execute('SELECT * FROM operator WHERE id=?',(int(d['id']),)).fetchone()
  if not user:raise ValueError('Operator not found')
+ registration=str(d.get('registration',user['registration'])).strip()
  role=d.get('role',user['role']);active=d.get('active',bool(user['active']))
  if role not in ROLES or not isinstance(active,bool):raise ValueError('Invalid operator role or status')
  if user['role']=='admin' and user['active'] and (role!='admin' or not active):
   if c.execute("SELECT COUNT(*) FROM operator WHERE role='admin' AND active=1").fetchone()[0]<=1:raise ValueError('Keep at least one active administrator')
+ if len(registration)>160:raise ValueError('Registration is too long')
+ if role=='pharmacist' and not registration:raise ValueError('Pharmacist registration is required')
  password=d.get('password','')
  if password:
   if not isinstance(password,str) or not 12<=len(password)<=256:raise ValueError('Use a password of 12–256 characters')
   salt=secrets.token_hex(16)
   c.execute('UPDATE operator SET password_hash=?,salt=?,failed=0,locked_until=0 WHERE id=?',(password_hash(password,salt),salt,user['id']))
- c.execute('UPDATE operator SET role=?,active=? WHERE id=?',(role,int(active),user['id']))
+ c.execute('UPDATE operator SET role=?,active=?,registration=? WHERE id=?',(role,int(active),registration,user['id']))
  c.execute('DELETE FROM session WHERE operator=?',(user['id'],))

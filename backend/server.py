@@ -4,6 +4,7 @@ from contextlib import closing
 import business_setup
 import settlements
 import parties
+import pharmacy
 import security
 from http.cookies import SimpleCookie
 from http.server import ThreadingHTTPServer, SimpleHTTPRequestHandler
@@ -51,7 +52,8 @@ def init():
         security.initialize(c)
         settlements.initialize(c)
         parties.initialize(c)
-        c.execute('PRAGMA user_version=7')
+        pharmacy.initialize(c)
+        c.execute('PRAGMA user_version=8')
 
 def backup():
     folder = DB.parent / 'backups'
@@ -91,7 +93,7 @@ def snapshot():
         for r in c.execute('SELECT * FROM documents ORDER BY id'):
             lines = [{**dict(l), 'name': l['name'], 'price': l['price'] / 100, 'tax': l['tax'] / 100, 'total': l['total'] / 100} for l in c.execute('SELECT lines.*,products.name,products.batch FROM lines JOIN products ON products.id=lines.product WHERE document=?', (r['id'],))]
             docs.append({**dict(r), 'company_snapshot':json.loads(r['company_snapshot']) if r['company_snapshot'] else None, 'customer': r['party'], 'number': r['kind'].upper() + '-' + str(r['id']).zfill(5), 'total': r['total'] / 100, 'lines': lines})
-        return {**business_setup.snapshot(c), **settlements.snapshot(c), 'products': products, 'sales': [d for d in docs if d['kind'] == 'sale'], 'documents': docs, 'accounts': [dict(r) for r in c.execute(TRIAL_BALANCE_SQL)], 'journal': [dict(r) for r in c.execute('SELECT journal.*,documents.party,documents.date,documents.kind FROM journal JOIN documents ON documents.id=document ORDER BY journal.id DESC')], 'unposted_documents': c.execute('SELECT COUNT(*) FROM documents WHERE NOT EXISTS(SELECT 1 FROM journal WHERE document=documents.id)').fetchone()[0], 'inspections': [dict(r) for r in c.execute('SELECT inspections.*,products.name FROM inspections JOIN products ON products.id=product ORDER BY inspections.id DESC')], 'movements': [dict(r) for r in c.execute('SELECT movements.*,products.name FROM movements JOIN products ON product=products.id ORDER BY movements.id DESC')]}
+        return {**business_setup.snapshot(c), **settlements.snapshot(c), 'prescription_register':pharmacy.register(c), 'products': products, 'sales': [d for d in docs if d['kind'] == 'sale'], 'documents': docs, 'accounts': [dict(r) for r in c.execute(TRIAL_BALANCE_SQL)], 'journal': [dict(r) for r in c.execute('SELECT journal.*,documents.party,documents.date,documents.kind FROM journal JOIN documents ON documents.id=document ORDER BY journal.id DESC')], 'unposted_documents': c.execute('SELECT COUNT(*) FROM documents WHERE NOT EXISTS(SELECT 1 FROM journal WHERE document=documents.id)').fetchone()[0], 'inspections': [dict(r) for r in c.execute('SELECT inspections.*,products.name FROM inspections JOIN products ON products.id=product ORDER BY inspections.id DESC')], 'movements': [dict(r) for r in c.execute('SELECT movements.*,products.name FROM movements JOIN products ON product=products.id ORDER BY movements.id DESC')]}
 
 def mutate(path, d, actor=None):
     with connection() as c:
@@ -134,7 +136,9 @@ def mutate(path, d, actor=None):
             gross_unit = price if inclusive else int((Decimal(price)*(1+Decimal(tax)/10000)).quantize(Decimal('1'),rounding=ROUND_HALF_UP))
             if mrp is not None and gross_unit > mrp:
                 raise ValueError('Selling price including tax exceeds MRP')
-            c.execute('INSERT INTO products(id,name,batch,expiry,stock,price,tax,pack_size,mrp,tax_inclusive) VALUES(?,?,?,?,?,?,?,?,?,?)', (secrets.token_hex(8), name, batch, expiry, 0, price, tax, pack_size, mrp, int(inclusive)))
+            identifier=secrets.token_hex(8)
+            c.execute('INSERT INTO products(id,name,batch,expiry,stock,price,tax,pack_size,mrp,tax_inclusive) VALUES(?,?,?,?,?,?,?,?,?,?)', (identifier, name, batch, expiry, 0, price, tax, pack_size, mrp, int(inclusive)))
+            pharmacy.save_product(c,identifier,d)
         elif path in ('/api/documents','/api/quote'):
             request_key = d.get('request_key') if path == '/api/documents' else None
             digest = hashlib.sha256(json.dumps(d,sort_keys=True,separators=(',', ':')).encode()).hexdigest()
@@ -158,6 +162,7 @@ def mutate(path, d, actor=None):
             seen = set()
             computed = []
             taxable_amounts = []
+            medicine_products=[]
             if kind in ('return', 'purchase_return'):
                 source_kind = 'sale' if kind == 'return' else 'purchase'
                 if not c.execute('SELECT id FROM documents WHERE id=? AND kind=?', (reference, source_kind)).fetchone():
@@ -175,6 +180,7 @@ def mutate(path, d, actor=None):
                 if unit not in ('loose', 'pack'):
                     raise ValueError('Choose loose units or packs')
                 qty *= p['pack_size'] if unit == 'pack' else 1
+                medicine_products.append(p)
                 price = p['price']
                 tax = p['tax']
                 if kind == 'purchase':
@@ -220,7 +226,9 @@ def mutate(path, d, actor=None):
             total = sum((x[4] for x in computed))
             if path == '/api/quote':
                 return {'total_paise':total,'lines':[{'product':pid,'quantity':qty,'total_paise':amount} for pid,qty,price,tax,amount in computed]}
+            trade,rx=pharmacy.validate_sale(c,{**d,'_party_ledger':party_ledger},actor,document_date,medicine_products) if kind=='sale' else ('retail',None)
             doc = c.execute('INSERT INTO documents(kind,party,date,total,reference,party_ledger) VALUES(?,?,?,?,?,?)', (kind, party, document_date, total, reference if kind in ('return', 'purchase_return') else None,party_ledger)).lastrowid
+            if kind=='sale':pharmacy.record(c,doc,trade,rx,actor,medicine_products,{pid:qty for pid,qty,price,tax,total in computed})
             company_snapshot=dict(c.execute('SELECT * FROM company').fetchone())
             c.execute('UPDATE documents SET company_snapshot=? WHERE id=?',(json.dumps(company_snapshot),doc))
             if request_key:
@@ -293,7 +301,7 @@ class Handler(SimpleHTTPRequestHandler):
             user=self.user()
             try:security.authorize(user,self.path,{})
             except PermissionError as e:return self.answer(403 if user else 401,{'error':str(e)})
-            with connection() as c:self.answer(200,{'users':[dict(r) for r in c.execute('SELECT id,username,role,active FROM operator ORDER BY username')]})
+            with connection() as c:self.answer(200,{'users':[dict(r) for r in c.execute('SELECT id,username,role,active,registration FROM operator ORDER BY username')]})
         else:
             super().do_GET()
 
