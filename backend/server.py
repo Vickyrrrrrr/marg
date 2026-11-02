@@ -9,6 +9,7 @@ import security
 import recovery
 import financial_year
 import workflows
+import checkout
 from threading import RLock
 from functools import wraps
 from urllib.parse import urlsplit, parse_qs
@@ -20,7 +21,7 @@ from decimal import Decimal, ROUND_HALF_UP
 ROOT = Path(getattr(sys, '_MEIPASS', Path(__file__).resolve().parents[1]))
 DB = Path(os.environ.get('LEDGERLY_DATA_DIR', str(ROOT / 'data'))) / 'erp.sqlite3'
 
-SCHEMA_VERSION = 13
+SCHEMA_VERSION = 14
 DATABASE_LOCK = RLock()
 
 def serialized(function):
@@ -77,6 +78,7 @@ def init():
         recovery.initialize(c)
         financial_year.initialize(c)
         workflows.initialize(c)
+        checkout.initialize(c)
         c.execute("CREATE UNIQUE INDEX IF NOT EXISTS supplier_invoice_identity ON documents(party_ledger,supplier_invoice COLLATE NOCASE) WHERE kind='purchase' AND supplier_invoice!='' AND party_ledger IS NOT NULL")
         c.execute('PRAGMA user_version='+str(SCHEMA_VERSION))
 
@@ -121,9 +123,10 @@ def snapshot():
     with connection() as c:
         products = [{**dict(r), 'price': r['price'] / 100, 'mrp': None if r['mrp'] is None else r['mrp']/100, 'tax': r['tax'] / 100} for r in c.execute('SELECT * FROM products ORDER BY name')]
         docs = []
+        checkout_payments=checkout.snapshot(c)
         for r in c.execute('SELECT * FROM documents ORDER BY id'):
             lines = [{**dict(l), 'name': l['name'], 'price': l['price'] / 100, 'tax': l['tax'] / 100, 'total': l['total'] / 100} for l in c.execute('SELECT lines.*,products.name,products.batch FROM lines JOIN products ON products.id=lines.product WHERE document=?', (r['id'],))]
-            docs.append({**dict(r), 'company_snapshot':json.loads(r['company_snapshot']) if r['company_snapshot'] else None, 'customer': r['party'], 'number': r['kind'].upper() + '-' + str(r['id']).zfill(5), 'total': r['total'] / 100, 'lines': lines})
+            docs.append({**dict(r), 'checkout':checkout_payments.get(r['id']), 'company_snapshot':json.loads(r['company_snapshot']) if r['company_snapshot'] else None, 'customer': r['party'], 'number': r['kind'].upper() + '-' + str(r['id']).zfill(5), 'total': r['total'] / 100, 'lines': lines})
         return {**business_setup.snapshot(c), **financial_year.snapshot(c), **workflows.snapshot(c), **settlements.snapshot(c), 'prescription_register':pharmacy.register(c), 'products': products, 'sales': [d for d in docs if d['kind'] == 'sale'], 'documents': docs, 'accounts': [dict(r) for r in c.execute(TRIAL_BALANCE_SQL)], 'journal': [dict(r) for r in c.execute('SELECT journal.*,documents.party,documents.date,documents.kind FROM journal JOIN documents ON documents.id=document ORDER BY journal.id DESC')], 'unposted_documents': c.execute('SELECT COUNT(*) FROM documents WHERE NOT EXISTS(SELECT 1 FROM journal WHERE document=documents.id)').fetchone()[0], 'inspections': [dict(r) for r in c.execute('SELECT inspections.*,products.name FROM inspections JOIN products ON products.id=product ORDER BY inspections.id DESC')], 'movements': [dict(r) for r in c.execute('SELECT movements.*,products.name FROM movements JOIN products ON product=products.id ORDER BY movements.id DESC')]}
 
 @serialized
@@ -179,9 +182,10 @@ def mutate(path, d, actor=None):
             identifier=secrets.token_hex(8)
             c.execute('INSERT INTO products(id,name,batch,expiry,stock,price,tax,pack_size,mrp,tax_inclusive) VALUES(?,?,?,?,?,?,?,?,?,?)', (identifier, name, batch, expiry, 0, price, tax, pack_size, mrp, int(inclusive)))
             pharmacy.save_product(c,identifier,d)
-        elif path in ('/api/documents','/api/quote'):
-            request_key = d.get('request_key') if path == '/api/documents' else None
-            digest = hashlib.sha256(json.dumps(d,sort_keys=True,separators=(',', ':')).encode()).hexdigest()
+        elif path in ('/api/documents','/api/quote','/api/checkout'):
+            request_key = d.get('request_key') if path != '/api/quote' else None
+            if path=='/api/checkout' and not request_key:raise ValueError('A counter transaction request key is required')
+            digest = hashlib.sha256(json.dumps({'operation':path,'data':d} if path=='/api/checkout' else d,sort_keys=True,separators=(',', ':')).encode()).hexdigest()
             if request_key:
                 if not isinstance(request_key,str) or len(request_key)>100:
                     raise ValueError('Invalid transaction request key')
@@ -189,9 +193,10 @@ def mutate(path, d, actor=None):
                 if previous:
                     if previous['digest'] != digest:
                         raise ValueError('This request key was used for a different transaction')
-                    return snapshot()
+                    return {**snapshot(),'posted_document':previous['document']} if path=='/api/checkout' else snapshot()
             document_date=business_setup.validate_date(c,d.get('date',date.today().isoformat()))
             kind = d['kind']
+            if path=='/api/checkout' and kind!='sale':raise ValueError('Counter checkout only accepts sales')
             if not kind in ('sale', 'purchase', 'return', 'purchase_return'):
                 raise ValueError('Invalid document type')
             supplier_invoice=d.get('supplier_invoice','') if kind=='purchase' else ''
@@ -269,7 +274,7 @@ def mutate(path, d, actor=None):
                 computed.append((pid, qty, price, tax, total))
             total = sum((x[4] for x in computed))
             if path == '/api/quote':
-                return {'total_paise':total,'lines':[{'product':pid,'quantity':qty,'total_paise':amount} for pid,qty,price,tax,amount in computed]}
+                return {'total_paise':total,'lines':[{'product':pid,'quantity':qty,'total_paise':amount,'taxable_paise':taxable_amounts[i],'tax_paise':amount-taxable_amounts[i]} for i,(pid,qty,price,tax,amount) in enumerate(computed)]}
             if supplier_invoice and c.execute("SELECT 1 FROM documents WHERE kind='purchase' AND party_ledger=? AND supplier_invoice=? COLLATE NOCASE",(party_ledger,supplier_invoice)).fetchone():raise ValueError('This supplier invoice has already been received')
             held_id=d.get('draft_id') if kind=='sale' else None
             if held_id:workflows.held(c,held_id,actor)
@@ -304,11 +309,12 @@ def mutate(path, d, actor=None):
             for account,debit,credit in postings:
                 if debit or credit or total == 0:
                     c.execute('INSERT INTO journal(document,account,debit,credit) VALUES(?,?,?,?)',(doc,account,debit,credit))
+            if path=='/api/checkout':checkout.post(c,doc,d,cents,business_setup.validate_date)
         else:
             raise ValueError('Unknown endpoint')
         if actor and path != '/api/quote':
             c.execute('INSERT INTO audit(operator,action,created_at) VALUES(?,?,?)',(actor['id'],path,int(security.time.time())))
-    return snapshot()
+    return {**snapshot(),'posted_document':doc} if path=='/api/checkout' else snapshot()
 
 class Handler(SimpleHTTPRequestHandler):
 

@@ -1,0 +1,418 @@
+/* Consistent desktop frame and compact counter entry. */
+body > aside {
+  width: 200px;
+  padding: 20px 12px;
+}
+body > aside .workspace {
+  margin: 24px 0 18px;
+}
+body > main {
+  margin-left: 200px;
+  width: calc(100% - 200px);
+}
+body > main > header {
+  height: 54px;
+  padding: 0 20px;
+}
+body > main > #content {
+  padding: 18px 20px;
+}
+#counterEntry {
+  color: #1e2b32;
+  font-family: "Segoe UI", system-ui, sans-serif;
+  font-size: 13px;
+}
+#counterEntry h1 {
+  margin: 0;
+  font-size: 22px;
+  letter-spacing: -0.3px;
+}
+#counterEntry h2 {
+  margin: 0;
+  font-size: 14px;
+}
+#counterEntry .btn {
+  min-height: 34px;
+  padding: 7px 12px;
+  border-radius: 4px;
+  font-size: 12px;
+}
+.counter-title,
+.counter-actions,
+.counter-sectionhead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.counter-title {
+  margin-bottom: 16px;
+}
+.counter-title span {
+  color: #617079;
+  display: block;
+  margin-top: 3px;
+  font-size: 12px;
+}
+.counter-meta {
+  display: grid;
+  grid-template-columns: minmax(180px, 2fr) 150px 140px minmax(160px, 1fr);
+  gap: 12px;
+  align-items: end;
+  padding: 12px;
+  background: #fff;
+  border: 1px solid #cfd9df;
+  border-top: 3px solid #245f52;
+}
+#counterEntry label {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #53626c;
+}
+#counterEntry input,
+#counterEntry select {
+  height: 34px;
+  padding: 6px 8px;
+  border: 1px solid #bbc9d0;
+  border-radius: 3px;
+  background: #fff;
+  color: #172832;
+  font-size: 13px;
+  width: 100%;
+  min-width: 0;
+}
+#counterEntry input:focus,
+#counterEntry select:focus {
+  outline: 2px solid #286958;
+  outline-offset: 1px;
+}
+.counter-party {
+  font-size: 11px;
+  color: #53626c;
+  line-height: 1.5;
+  padding: 0 4px 5px;
+}
+#counterError {
+  color: #9c2121;
+  white-space: pre-wrap;
+  margin: 0;
+}
+#counterError:not(:empty) {
+  border-left: 3px solid #ad3636;
+  background: #fff0ee;
+  padding: 9px 12px;
+  margin: 10px 0;
+}
+.counter-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 260px;
+  gap: 14px;
+  align-items: start;
+  margin-top: 12px;
+}
+.counter-lines {
+  min-width: 0;
+}
+.counter-box {
+  border: 1px solid #cfd9df;
+  background: #fff;
+  border-radius: 3px;
+  margin-bottom: 12px;
+}
+.counter-entryrow {
+  display: grid;
+  grid-template-columns: minmax(200px, 1fr) 75px 80px auto;
+  align-items: end;
+  gap: 10px;
+  padding: 12px;
+}
+#counterEntry kbd {
+  display: inline-block;
+  font:
+    10px "Segoe UI",
+    sans-serif;
+  color: #56656d;
+  background: #f1f4f6;
+  border: 1px solid #d1dbe0;
+  border-radius: 2px;
+  padding: 1px 4px;
+}
+.counter-entryrow kbd {
+  margin-left: 5px;
+}
+.counter-batch-scroll {
+  max-height: 200px;
+  overflow: auto;
+  border-top: 1px solid #dbe2e6;
+}
+#counterEntry table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+#counterEntry th {
+  position: sticky;
+  top: 0;
+  padding: 8px;
+  white-space: nowrap;
+  background: #edf2f5;
+  color: #4a5c68;
+  font-weight: 600;
+  font-size: 10px;
+  text-transform: none;
+  letter-spacing: 0;
+  z-index: 1;
+}
+#counterEntry td {
+  padding: 8px;
+  border-bottom: 1px solid #e2e8eb;
+  white-space: nowrap;
+}
+#counterEntry td small {
+  display: block;
+  color: #687782;
+  font-size: 10px;
+  line-height: 1.5;
+}
+#counterEntry td:not(:first-child):not(:nth-child(2)),
+#counterEntry th:not(:first-child):not(:nth-child(2)) {
+  text-align: right;
+}
+.counter-batches {
+  min-width: 650px;
+}
+.counter-batches .batch-current {
+  background: #e6f1ed;
+  box-shadow: inset 3px 0 #245f52;
+}
+.counter-batches .batch-blocked {
+  opacity: 0.65;
+}
+.counter-product {
+  border: 0;
+  background: none;
+  text-align: left;
+  padding: 0;
+  color: inherit;
+  max-width: 260px;
+  white-space: normal;
+}
+.counter-product b {
+  font-size: 12px;
+}
+.counter-batch-detail {
+  padding: 8px 12px;
+  border-top: 1px solid #dbe2e6;
+  font-size: 11px;
+  color: #53626c;
+  background: #f8fafb;
+}
+.counter-sectionhead {
+  padding: 10px 12px;
+  border-bottom: 1px solid #dbe2e6;
+}
+.counter-sectionhead span {
+  font-size: 11px;
+  color: #687782;
+}
+.counter-grid-scroll {
+  min-height: 160px;
+  max-height: 350px;
+  overflow: auto;
+}
+.counter-grid {
+  min-width: 720px;
+}
+#counterEntry .counter-grid input {
+  width: 62px;
+  text-align: right;
+  height: 28px;
+  padding: 3px;
+}
+#counterEntry .counter-grid td:nth-child(2) {
+  min-width: 145px;
+  white-space: normal;
+}
+.counter-remove {
+  border: 0;
+  background: none;
+  color: #9a3030;
+  font-size: 11px;
+  padding: 4px;
+}
+#counterEntry td.counter-empty {
+  text-align: center;
+  padding: 50px 16px;
+  color: #71808b;
+  white-space: normal;
+}
+#counterEntry details summary {
+  cursor: pointer;
+  padding: 10px 12px;
+  font-size: 12px;
+  font-weight: 600;
+}
+#rxRequired {
+  color: #9c3e1d;
+  font-size: 11px;
+  padding-left: 10px;
+}
+#counterEntry #prescriptionFields {
+  padding: 12px;
+  border-top: 1px solid #dbe2e6;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+.counter-holdrow {
+  display: flex;
+  gap: 10px;
+  align-items: end;
+}
+.counter-holdrow label {
+  flex: 1;
+}
+.counter-holdrow > span {
+  color: #687782;
+  font-size: 11px;
+  padding-bottom: 8px;
+}
+#counterEntry .counter-checkout {
+  position: static;
+  height: auto;
+  width: auto;
+  padding: 14px;
+  display: block;
+}
+.counter-checkout h2 {
+  padding-bottom: 12px;
+  border-bottom: 1px solid #dbe2e6;
+}
+.counter-sumrow,
+.counter-total,
+#paymentBalance > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 0;
+}
+.counter-sumrow {
+  color: #53626c;
+  font-size: 12px;
+}
+.counter-total {
+  border-top: 1px solid #dbe2e6;
+  border-bottom: 1px solid #dbe2e6;
+  padding: 12px 0;
+  margin-top: 8px;
+}
+.counter-total span {
+  font-size: 11px;
+}
+.counter-total strong {
+  font-size: 25px;
+  letter-spacing: -1px;
+  font-variant-numeric: tabular-nums;
+}
+.counter-payment {
+  display: grid;
+  gap: 12px;
+  padding: 14px 0;
+}
+#paymentBalance {
+  font-size: 12px;
+}
+#counterSave {
+  width: 100%;
+}
+#checkoutNote {
+  font-size: 11px;
+  color: #687782;
+  line-height: 1.5;
+}
+.counter-shortcuts {
+  display: grid;
+  gap: 7px;
+  border-top: 1px solid #dbe2e6;
+  padding-top: 12px;
+  margin-top: 16px;
+  font-size: 11px;
+  color: #617079;
+}
+#heldCounter {
+  border: 1px solid #9aabb5;
+  border-radius: 4px;
+  width: min(680px, 90vw);
+  padding: 0;
+}
+#heldCounter::backdrop {
+  background: #13232e66;
+}
+#heldCounterRows {
+  padding: 12px;
+}
+.counter-heldrow {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  padding: 12px 0;
+  border-bottom: 1px solid #dbe2e6;
+}
+.counter-heldrow > div {
+  flex: 1;
+}
+.counter-heldrow small {
+  display: block;
+  margin-top: 4px;
+  color: #687782;
+}
+.invoice-payment {
+  border-top: 1px solid #dbe2e6;
+  margin-top: 14px;
+  padding-top: 12px;
+}
+@media (max-width: 1150px) {
+  .counter-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  #counterEntry .counter-checkout {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0 24px;
+  }
+  .counter-shortcuts {
+    display: none;
+  }
+  .counter-meta {
+    grid-template-columns: 1fr 140px 130px;
+  }
+  .counter-party {
+    grid-column: 1/-1;
+  }
+}
+@media (max-width: 900px) {
+  body > aside {
+    width: 76px;
+  }
+  body > main {
+    margin-left: 76px;
+    width: calc(100% - 76px);
+  }
+  .counter-title {
+    align-items: start;
+  }
+  .counter-actions {
+    flex-wrap: wrap;
+    justify-content: end;
+  }
+}
+
+#counterEntry label > kbd { align-self: flex-start; }
+body > aside nav { overflow-y: auto; min-height: 0; }
+@media print {
+  body > main { margin: 0; width: 100%; }
+  body > main > #content { padding: 0; }
+}

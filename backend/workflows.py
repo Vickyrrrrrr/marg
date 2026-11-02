@@ -2,6 +2,7 @@
 import json
 import secrets
 import time
+from datetime import date
 
 
 def initialize(c):
@@ -60,7 +61,10 @@ def mutate(c, path, d, actor, integer):
             raise ValueError('Invalid prescription fields')
         if any(rx.values()) and actor['role'] not in ('admin', 'pharmacist'):
             raise ValueError('Only a pharmacist or administrator may retain prescription details')
-        normalized = {'party': party, 'trade': trade, 'prescription': rx, 'lines': lines}
+        day=payload.get('date',date.today().isoformat())
+        if not isinstance(day,str):raise ValueError('Invalid held-bill date')
+        day=date.fromisoformat(day).isoformat()
+        normalized = {'date':day,'party': party, 'trade': trade, 'prescription': rx, 'lines': lines}
         identifier = d.get('id')
         if identifier:
             held(c, identifier, actor)

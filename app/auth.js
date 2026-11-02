@@ -45,6 +45,12 @@ render = function () {
     .forEach((e) => (e.textContent = state.operator?.username || "Operator"));
 };
 function showSignIn(setup) {
+  cart = [];
+  activeHeldBill = null;
+  counterDraft = null;
+  counterQuote = null;
+  counterAttempt = null;
+  document.body.classList.remove("counter-mode");
   signedIn = false;
   document.querySelector("nav").hidden = true;
   document.querySelector("#signout")?.remove();

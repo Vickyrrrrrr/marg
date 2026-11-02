@@ -17,6 +17,7 @@ GROUPS = {
     'financial-year': 'test_financial_year.py',
     'security': 'test_security.py',
     'recovery': 'test_recovery.py',
+    'counter-checkout': 'test_checkout.py',
     'counter-recalls': 'test_workflows.py',
     'packaging': 'test_packaging.py',
 }

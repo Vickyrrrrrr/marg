@@ -55,7 +55,7 @@ def current(c,token):
 
 def authorize(user,path,d):
  if not user:raise PermissionError('Sign in to continue')
- permission={'/api/held':'sale','/api/held-delete':'sale','/api/recall':'inventory','/api/recall-close':'inventory','/api/year-preview':'year-close','/api/year-close':'year-close','/api/backup-inspect':'recovery','/api/backup-import':'recovery','/api/restore':'recovery','/api/parties':'parties','/api/products':'inventory','/api/inspection':'inspection','/api/backup':'backup','/api/users':'users','/api/users/update':'users','/api/company':'accounting','/api/ledgers':'accounting','/api/openings':'accounting','/api/period-lock':'accounting'}.get(path)
+ permission={'/api/checkout':'sale','/api/held':'sale','/api/held-delete':'sale','/api/recall':'inventory','/api/recall-close':'inventory','/api/year-preview':'year-close','/api/year-close':'year-close','/api/backup-inspect':'recovery','/api/backup-import':'recovery','/api/restore':'recovery','/api/parties':'parties','/api/products':'inventory','/api/inspection':'inspection','/api/backup':'backup','/api/users':'users','/api/users/update':'users','/api/company':'accounting','/api/ledgers':'accounting','/api/openings':'accounting','/api/period-lock':'accounting'}.get(path)
  if path=='/api/settlements':permission='receipt' if d.get('kind')=='receipt' else 'settlement'
  if path in ('/api/documents','/api/quote'):permission=d.get('kind')
  if permission not in ROLES.get(user['role'],set()):raise PermissionError('Your role does not allow this operation')

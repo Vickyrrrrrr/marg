@@ -6,6 +6,7 @@ Ledgerly is an offline desktop application for pharmacy retailers and wholesaler
 
 - Company identity, licences, financial-year setup, classified accounts, customer/supplier masters and balanced opening entries.
 - Medicine batches with generic name, strength, manufacturer, schedule, HSN, barcode, expiry, pack size, selling price and MRP. Barcode entry selects an available batch in expiry order for operator review.
+- Compact counter entry with searchable batch rows, editable quantities, dated invoices, keyboard shortcuts and backend-calculated totals. Cash, bank/UPI and credit checkout save the invoice, stock, prescription record and allocated receipt in one database transaction; cash change and partial-payment balances are shown.
 - Pack/loose counter sales, inclusive/exclusive tax arithmetic, stock and expiry checks, retry protection and durable held bills. Held bills do not reserve stock; posting rechecks current conditions.
 - Multi-batch purchase receipts and original-invoice customer/supplier returns. Supplier invoice numbers are checked for duplicates within a supplier ledger. Customer returns enter quarantine for inspection or disposal.
 - Batch recalls with recorded references, reasons and closure findings. Active recalls block sales and quarantine release. Batch history links purchases, supplies and returns without deleting original records.

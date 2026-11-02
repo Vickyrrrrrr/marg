@@ -27,6 +27,12 @@ function toast(s) {
   setTimeout(() => ($("#toast").style.display = "none"), 2600);
 }
 function go(p) {
+  if (
+    page === "billing" &&
+    p !== "billing" &&
+    typeof counterRead === "function"
+  )
+    counterRead();
   page = p;
   document
     .querySelectorAll("nav button")

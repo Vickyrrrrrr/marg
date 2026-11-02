@@ -92,6 +92,9 @@ jobs:
       - name: Held bills, recalls and purchasing
         if: ${{ !cancelled() }}
         run: python scripts/ci_checks.py --group counter-recalls
+      - name: Verify atomic counter checkout
+        if: ${{ !cancelled() }}
+        run: python scripts/ci_checks.py --group counter-checkout
       - name: Packaging process cleanup
         if: ${{ !cancelled() }}
         run: python scripts/ci_checks.py --group packaging
