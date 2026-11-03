@@ -153,8 +153,12 @@ operations = function () {
   stockCart = [];
   singleReceiptOperations();
   document.querySelector("#content > section").innerHTML =
-    `<div class="formgrid"><label>Transaction<select id="kind"><option value="purchase">Purchase receipt</option><option value="return">Customer return</option><option value="purchase_return">Supplier return</option></select></label><label>Date<input id="stockDate" type="date" value="${localDay()}" required></label><label>Supplier / customer<input id="party" required placeholder="Party name"></label><label>Supplier invoice number<input id="supplierInvoice" maxlength="120" placeholder="Printed supplier invoice reference"></label><label>Original document<select id="reference"></select></label></div><hr><div class="formrow"><label>Product / batch<select id="receiptProduct">${state.products.map((p) => `<option value="${p.id}">${esc(p.name)} · ${esc(p.batch)}</option>`).join("")}</select></label><label>Quantity<input type="number" min="1" step="1" value="1" id="receiptQty"></label><label>Unit<select id="receiptUnit"><option value="loose">Loose units</option><option value="pack">Packs</option></select></label><label>Cost per loose unit, before tax (₹)<input type="number" min="0" step="0.01" id="cost" value="0"></label>${btn("Add batch", "addStockLine()", true)}</div><div id="stockCart" style="margin-top:20px"></div><div class="panelhead" style="margin-top:16px"><p id="stockQuote" role="status"></p>${btn("Post transaction", "postReceipt()")}</div>`;
+    `<div class="formgrid"><label>Transaction<select id="kind"><option value="purchase">Purchase receipt</option><option value="return">Customer return</option><option value="purchase_return">Supplier return</option></select></label><label>Date<input id="stockDate" type="date" value="${localDay()}" required></label><label>Supplier / customer<input id="party" required placeholder="Party name"></label><label>Supplier invoice number<input id="supplierInvoice" maxlength="120" placeholder="Printed supplier invoice reference"></label><label>Original document<select id="reference"></select></label></div><hr><div class="formrow"><label>Product / batch<select id="receiptProduct">${state.products.map((p) => `<option value="${p.id}">${esc(p.name)} · ${esc(p.batch)}</option>`).join("")}</select></label><label>Quantity<input type="number" min="1" step="1" value="1" id="receiptQty"></label><label>Unit<select id="receiptUnit"><option value="loose">Loose units</option><option value="pack">Packs</option></select></label><label>Free loose units<input id="receiptFree" type="number" min="0" step="1" value="0"></label><label>Discount %<input id="receiptDiscount" type="number" min="0" max="100" step="0.01" value="0"></label><label>Cost per loose unit, before tax (₹)<input type="number" min="0" step="0.01" id="cost" value="0"></label>${btn("Add batch", "addStockLine()", true)}</div><div id="stockCart" style="margin-top:20px"></div><div class="panelhead" style="margin-top:16px"><p id="stockQuote" role="status"></p>${btn("Post transaction", "postReceipt()")}</div>`;
+  const postButton = document.querySelector('[onclick="postReceipt()"]');
+  postButton.id = "postStockTransaction";
   $("#kind").onchange = () => {
+    $("#receiptFree").value = "0";
+    $("#receiptDiscount").value = "0";
     stockCart = [];
     toggleReturn();
     $("#supplierInvoice").disabled = $("#kind").value !== "purchase";
@@ -164,6 +168,8 @@ operations = function () {
     stockCart = [];
     drawStockCart();
   };
+  $("#stockDate").onchange = drawStockCart;
+  $("#party").onchange = drawStockCart;
   toggleReturn();
   drawStockCart();
 };
@@ -190,30 +196,79 @@ function addStockLine() {
     if (!source || !source.lines.some((l) => l.product === p.id))
       return toast("Select the original invoice and a batch from it.");
   }
-  stockCart.push({ product: p.id, qty, price });
+  stockCart.push({
+    product: p.id,
+    qty,
+    price,
+    free_qty:
+      $("#kind").value === "purchase" ? Number($("#receiptFree").value) : 0,
+    discount_percent:
+      $("#kind").value === "purchase" ? $("#receiptDiscount").value : 0,
+  });
   drawStockCart();
 }
 function removeStockLine(index) {
   stockCart.splice(index, 1);
   drawStockCart();
 }
-function drawStockCart() {
+let stockQuoteGeneration = 0;
+async function drawStockCart() {
+  const generation = ++stockQuoteGeneration;
+  $("#postStockTransaction").disabled = true;
+  const purchase = $("#kind").value === "purchase";
+  $("#receiptFree").disabled = !purchase;
+  $("#receiptDiscount").disabled = !purchase;
   $("#stockCart").innerHTML =
-    `<div class="tablewrap"><table><thead><tr><th>Medicine / batch</th><th>Loose units</th><th>Entered purchase unit cost</th><th></th></tr></thead><tbody>${
+    `<div class="tablewrap"><table><thead><tr><th>Medicine / batch</th><th>${purchase ? "Paid loose qty" : "Return loose qty"}</th><th>Free loose qty</th><th>Cost / unit</th><th>Discount %</th><th>Line total</th><th></th></tr></thead><tbody>${
       stockCart
         .map((l, i) => {
           const p = state.products.find((p) => p.id === l.product);
-          return `<tr><td>${esc(p.name)} · ${esc(p.batch)}</td><td>${l.qty}</td><td>${$("#kind").value === "purchase" ? money(Number(l.price)) : "Original invoice allocation"}</td><td><button class="btn secondary" onclick="removeStockLine(${i})">Remove</button></td></tr>`;
+          return `<tr><td>${esc(p.name)} · ${esc(p.batch)}</td><td><input aria-label="Receipt quantity ${i + 1}" type="number" min="1" step="1" value="${l.qty}" onchange="editStockLine(${i},'qty',this.value)"></td><td><input aria-label="Free quantity ${i + 1}" type="number" min="0" step="1" value="${l.free_qty || 0}" ${purchase ? "" : "disabled"} onchange="editStockLine(${i},'free_qty',this.value)"></td><td>${purchase ? `<input aria-label="Purchase cost ${i + 1}" type="number" min="0" step="0.01" value="${esc(l.price)}" onchange="editStockLine(${i},'price',this.value)">` : "Original allocation"}</td><td><input aria-label="Purchase discount ${i + 1}" type="number" min="0" max="100" step="0.01" value="${esc(l.discount_percent || 0)}" ${purchase ? "" : "disabled"} onchange="editStockLine(${i},'discount_percent',this.value)"></td><td data-stock-total="${i}">…</td><td><button class="btn secondary" onclick="removeStockLine(${i})">Remove</button></td></tr>`;
         })
         .join("") ||
-      '<tr><td colspan="4">Add the batches on this invoice.</td></tr>'
+      '<tr><td colspan="7">Add batches from the supplier invoice or original return document.</td></tr>'
     }</tbody></table></div>`;
-  $("#stockQuote").textContent =
-    stockCart.length +
-    " batches ready. Posting validates stock, original quantities and totals.";
+  $("#stockQuote").textContent = stockCart.length
+    ? "Calculating invoice…"
+    : "No batches added.";
+  if (!stockCart.length) return;
+  try {
+    const response = await fetch("/api/quote", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        kind: $("#kind").value,
+        date: $("#stockDate").value,
+        party: $("#party").value,
+        reference: Number($("#reference").value),
+        lines: stockCart,
+      }),
+    });
+    const quote = await response.json();
+    if (generation !== stockQuoteGeneration || page !== "operations") return;
+    if (!response.ok) throw Error(quote.error);
+    $("#postStockTransaction").disabled = stockSubmitting;
+    quote.lines.forEach(
+      (line, i) =>
+        (document.querySelector(`[data-stock-total="${i}"]`).textContent =
+          money(line.total_paise / 100)),
+    );
+    $("#stockQuote").textContent =
+      `${stockCart.length} batches · Total ${money(quote.total_paise / 100)} · ${quote.lines.reduce((n, l) => n + l.quantity, 0)} loose units`;
+  } catch (error) {
+    if (generation === stockQuoteGeneration && page === "operations")
+      $("#stockQuote").textContent = error.message;
+  }
+}
+function editStockLine(index, field, value) {
+  stockCart[index][field] = ["qty", "free_qty"].includes(field)
+    ? Number(value)
+    : value;
+  drawStockCart();
 }
 postReceipt = async function () {
   if (stockSubmitting) return;
+  if ($("#postStockTransaction")?.disabled) return toast("Wait for a valid transaction total before posting.");
   if (!stockCart.length) return toast("Add at least one batch.");
   const kind = $("#kind").value;
   if (kind === "purchase" && !$("#supplierInvoice").value.trim())

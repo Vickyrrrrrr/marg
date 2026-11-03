@@ -8,12 +8,13 @@ Run the source checks and all test groups:
 python scripts/ci_checks.py --group all
 ```
 
-All **81 current tests** must pass, with no errors, failures, unexpected successes, expected failures or skipped tests. Do not add tests merely to reach a count. Source checks validate the **11 JavaScript files**, Python syntax, package/lock consistency and assignment of every test module to a CI group. A new test module must be added to `GROUPS` in `scripts/ci_checks.py`; otherwise source validation fails.
+All **89 current tests** must pass, with no errors, failures, unexpected successes, expected failures or skipped tests. Do not add tests merely to reach a count. Source checks validate the **12 JavaScript files**, Python syntax, package/lock consistency and assignment of every test module to a CI group. A new test module must be added to `GROUPS` in `scripts/ci_checks.py`; otherwise source validation fails.
 
 For a focused change, run an individual group with `python scripts/ci_checks.py --group pharmacy`, substituting the group below. Results are written to ignored `reports/*.json`. On Actions, each group also adds its status and elapsed time to the job summary. The original `python -m unittest discover -s tests -v` command remains available, but the CI runner additionally rejects skipped/expected-failure tests.
 
 | CI group | Tests | Behaviour protected |
 |---|---:|---|
+| `commercial-terms` | 8 | Discount rounding, original-value returns, free-unit stock/cost, quote purity, invalid-term rollback, named checkout ledger, held terms and persistence |
 | `billing-stock` | 18 | Purchases, sales, returns, overselling, MRP, packs, inclusive tax, rounding, balanced journals, periods, migrations and SQLite handle cleanup |
 | `pharmacy` | 11 | Prescription completeness, pharmacist permissions, wholesale licences, supply register retention, patient privacy and barcode identity |
 | `parties-invoices` | 8 | Stable party identity, classifications, duplicate prevention, opening/settlement accounts and immutable saved invoice identity |
@@ -25,7 +26,7 @@ For a focused change, run an individual group with `python scripts/ci_checks.py 
 | `counter-recalls` | 6 | Durable holds, atomic sale/retry, recall blocking/closure, multi-batch receipt rollback and supplier-invoice uniqueness |
 | `packaging` | 3 | Process/log cleanup after launch failure, startup crash and failure after readiness; real subprocesses and file deletion are exercised |
 
-For a changed user workflow, exercise the UI with valid and invalid inputs and check persistence after restart. Browser verification should cover medicine/party setup, pharmacist login and prescription supply; multi-batch purchase; reviewed year closing; export; reload/resume held bill; recall/trace/closure; sale and restore/sign-in with expected balances. Backend tests do not establish UI correctness.
+For a changed user workflow, exercise the UI with valid and invalid inputs and check persistence after restart. Browser verification should cover medicine/party setup, pharmacist login and prescription supply; multi-batch purchase; reviewed year closing; export; reload/resume held bill; recall/trace/closure; sale and restore/sign-in with expected balances. Backend tests do not establish UI correctness. For commercial terms and desktop actions, also verify purchase free/paid quantities and discount totals, sale discounts across hold/reload, cash change, customer-ledger posting, tax dialogs, right-click and Shift+F10 row menus, expiry filters/export/drill-down, and sign-out cleanup. Modal dialogs must prevent the counter save shortcut from posting behind them.
 
 ## One manually triggered Actions workflow
 
@@ -34,8 +35,8 @@ Use **Actions → Desktop validation → Run workflow**. No push, pull-request, 
 | Mode | Validation | Packaging | Platform selection |
 |---|---|---|---|
 | `fast` | Three packaging-cleanup tests | Backend smoke check and development installer | Windows by default; macOS/both available |
-| `validate` | Source/lock checks, then all ten test groups | None | Selected OS or both |
-| `release-candidate` | Source/lock checks, then all ten groups on **both OSes** | Only after all checks pass: backend smoke checks, installers, checksums and build metadata | Always Windows **and** macOS |
+| `validate` | Source/lock checks, then all eleven test groups | None | Selected OS or both |
+| `release-candidate` | Source/lock checks, then all eleven groups on **both OSes** | Only after all checks pass: backend smoke checks, installers, checksums and build metadata | Always Windows **and** macOS |
 
 Source checks run once on Ubuntu without installing application dependencies. Platform tests run on the actual Windows/macOS runners, with business areas shown as separate steps. A failing test group does not hide results from subsequent groups; the job remains failed. Failed or skipped validation prevents candidate packaging. Fast builds do not claim full validation.
 

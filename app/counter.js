@@ -50,7 +50,11 @@ function counterPayload() {
     trade: counterDraft.trade,
     prescription: counterDraft.prescription,
     draft_id: activeHeldBill,
-    lines: cart.map((l) => ({ product: l.id, qty: l.qty })),
+    lines: cart.map((l) => ({
+      product: l.id,
+      qty: l.qty,
+      discount_percent: l.discount_percent || 0,
+    })),
     payment: {
       mode: counterDraft.payment,
       ledger:
@@ -62,7 +66,11 @@ function counterPayload() {
 function counterBillKey() {
   return JSON.stringify({
     date: $("#saleDate")?.value,
-    lines: cart.map((l) => ({ product: l.id, qty: l.qty })),
+    lines: cart.map((l) => ({
+      product: l.id,
+      qty: l.qty,
+      discount_percent: l.discount_percent || 0,
+    })),
   });
 }
 function counterScreen() {
@@ -73,7 +81,7 @@ function counterScreen() {
     `<div id="counterEntry"><div class="counter-title"><div><h1>Sale entry</h1><span>${esc(state.company?.name || "Company setup required")} · ${activeHeldBill ? "Resumed held bill" : "Unsaved invoice"}</span></div><div class="counter-actions"><button class="btn secondary" onclick="resetCounter()">New bill</button><button class="btn secondary" onclick="openHeldCounter()">Held bills (${(state.held_bills || []).length})</button><button class="btn secondary" onclick="go('activity')">Sales register</button></div></div>
   <div class="counter-meta"><label>Customer / account<input id="customer" value="${esc(counterDraft.party)}" placeholder="Walk-in customer" autocomplete="off"></label><label>Invoice date<input id="saleDate" type="date" value="${esc(counterDraft.date)}" required></label><label>Supply type<select id="trade"><option value="retail">Retail</option><option value="wholesale">Wholesale</option></select></label><div id="counterParty" class="counter-party"></div></div>
   <p id="counterError" role="alert" aria-live="polite"></p><div class="counter-layout"><div class="counter-lines"><section class="counter-box counter-search"><div class="counter-entryrow"><label>Find medicine / scan barcode <kbd>F2</kbd><input id="barcodeSearch" autocomplete="off" placeholder="Name, generic, manufacturer, batch or barcode" value="${esc(counterDraft.search)}"></label><label>Quantity<input id="addQty" type="number" min="1" step="1" value="${esc(counterDraft.qty)}"></label><label>Unit<select id="saleUnit"><option value="loose">Loose</option><option value="pack">Packs</option></select></label><button class="btn" onclick="addItem()">Add item</button></div><select id="productSelect" hidden>${state.products.map((p) => `<option value="${p.id}">${esc(p.name)} · ${esc(p.batch)}</option>`).join("")}</select><div class="counter-batch-scroll"><table class="counter-batches"><thead><tr><th>Medicine / manufacturer</th><th>Batch</th><th>Expiry</th><th>Available</th><th>Pack</th><th>MRP / unit</th><th>Sale price / unit</th></tr></thead><tbody id="batchRows"></tbody></table></div><div id="selectedBatch" class="counter-batch-detail"></div></section>
-  <section class="counter-box counter-invoice"><div class="counter-sectionhead"><h2>Invoice items</h2><span id="lineCount"></span></div><div class="counter-grid-scroll"><table class="counter-grid"><thead><tr><th>#</th><th>Medicine / batch</th><th>Expiry</th><th>Loose qty</th><th>MRP / unit</th><th>Price / unit</th><th>Tax</th><th>Line total</th><th></th></tr></thead><tbody id="cartRows"></tbody></table></div></section>
+  <section class="counter-box counter-invoice"><div class="counter-sectionhead"><h2>Invoice items</h2><span id="lineCount"></span></div><div class="counter-grid-scroll"><table class="counter-grid"><thead><tr><th>#</th><th>Medicine / batch</th><th>Expiry</th><th>Loose qty</th><th>MRP / unit</th><th>Price / unit</th><th>Disc. %</th><th>Tax</th><th>Line total</th><th></th></tr></thead><tbody id="cartRows"></tbody></table></div></section>
   <details id="rxSection" class="counter-box"><summary>Prescription & dispensing details <span id="rxRequired"></span></summary><div id="prescriptionFields" class="formgrid">${[
     ["reference", "Prescription reference"],
     ["prescription_date", "Prescription date"],
@@ -205,7 +213,7 @@ function drawCounterBatches() {
       .map((p, i) => {
         const blocked = batchUnavailable(p),
           left = p.stock - (cart.find((l) => l.id === p.id)?.qty || 0);
-        return `<tr data-batch-cursor="${i === batchCursor}" class="${i === batchCursor ? "batch-current" : ""} ${blocked ? "batch-blocked" : ""}"><td><button class="counter-product" ${blocked ? "disabled" : ""} onclick="chooseCounterBatch('${p.id}')"><b>${esc(p.name)} ${esc(p.strength)}</b><small>${esc(p.generic_name)} · ${esc(p.manufacturer)} ${blocked ? " · " + blocked : ""}</small></button></td><td>${esc(p.batch)}</td><td>${esc(p.expiry || "—")}</td><td>${Math.max(0, left)}</td><td>${p.pack_size}</td><td>${p.mrp == null ? "—" : money(p.mrp)}</td><td>${money(p.price)}<small>${p.tax_inclusive ? "incl." : "excl."} ${p.tax}% tax</small></td></tr>`;
+        return `<tr tabindex="0" data-product="${p.id}" data-batch-cursor="${i === batchCursor}" class="${i === batchCursor ? "batch-current" : ""} ${blocked ? "batch-blocked" : ""}"><td><button class="counter-product" ${blocked ? "disabled" : ""} onclick="chooseCounterBatch('${p.id}')"><b>${esc(p.name)} ${esc(p.strength)}</b><small>${esc(p.generic_name)} · ${esc(p.manufacturer)} ${blocked ? " · " + blocked : ""}</small></button></td><td>${esc(p.batch)}</td><td>${esc(p.expiry || "—")}</td><td>${Math.max(0, left)}</td><td>${p.pack_size}</td><td>${p.mrp == null ? "—" : money(p.mrp)}</td><td>${money(p.price)}<small>${p.tax_inclusive ? "incl." : "excl."} ${p.tax}% tax</small></td></tr>`;
       })
       .join("") ||
     '<tr><td colspan="7">No matching medicine or batch.</td></tr>';
@@ -342,10 +350,10 @@ renderCart = async function () {
     cart
       .map(
         (l, i) =>
-          `<tr><td>${i + 1}</td><td><b>${esc(l.name)}</b><small>${esc(l.batch)} · ${esc(l.schedule)}</small></td><td>${esc(l.expiry || "—")}</td><td><input aria-label="Loose quantity for ${esc(l.name)}" type="number" min="1" max="${l.stock}" step="1" value="${l.qty}" onchange="counterChangeQty(${i},this.value)"></td><td>${l.mrp == null ? "—" : money(l.mrp)}</td><td>${money(l.price)}<small>${l.tax_inclusive ? "incl." : "excl."} tax</small></td><td>${l.tax}%</td><td data-quote-line="${l.id}">…</td><td><button class="counter-remove" aria-label="Remove ${esc(l.name)}" onclick="removeItem(${i})">Remove</button></td></tr>`,
+          `<tr tabindex="0" data-product="${l.id}" data-cart-index="${i}"><td>${i + 1}</td><td><b>${esc(l.name)}</b><small>${esc(l.batch)} · ${esc(l.schedule)}</small></td><td>${esc(l.expiry || "—")}</td><td><input aria-label="Loose quantity for ${esc(l.name)}" type="number" min="1" max="${l.stock}" step="1" value="${l.qty}" onchange="counterChangeQty(${i},this.value)"></td><td>${l.mrp == null ? "—" : money(l.mrp)}</td><td>${money(l.price)}<small>${l.tax_inclusive ? "incl." : "excl."} tax</small></td><td><input aria-label="Discount percent for ${esc(l.name)}" type="number" min="0" max="100" step="0.01" value="${l.discount_percent || 0}" onchange="counterDiscount(${i},this.value)"></td><td>${l.tax}%</td><td data-quote-line="${l.id}">…</td><td><button class="counter-remove" aria-label="Remove ${esc(l.name)}" onclick="removeItem(${i})">Remove</button></td></tr>`,
       )
       .join("") ||
-    '<tr><td colspan="9" class="counter-empty">Search a medicine or scan its barcode, select the batch, then enter quantity.</td></tr>';
+    '<tr><td colspan="10" class="counter-empty">Search a medicine or scan its barcode, select the batch, then enter quantity.</td></tr>';
   $("#summary").innerHTML =
     '<div class="counter-total"><span>Invoice total</span><strong>—</strong></div>';
   $("#paymentBalance").textContent = "";
@@ -358,7 +366,11 @@ renderCart = async function () {
         body: JSON.stringify({
           kind: "sale",
           date: $("#saleDate").value,
-          lines: cart.map((l) => ({ product: l.id, qty: l.qty })),
+          lines: cart.map((l) => ({
+            product: l.id,
+            qty: l.qty,
+            discount_percent: l.discount_percent || 0,
+          })),
         }),
       }),
       q = await r.json();
@@ -429,7 +441,11 @@ holdCurrentBill = async function () {
         date: counterDraft.date,
         trade: counterDraft.trade,
         prescription: counterDraft.prescription,
-        lines: cart.map((l) => ({ product: l.id, qty: l.qty })),
+        lines: cart.map((l) => ({
+          product: l.id,
+          qty: l.qty,
+          discount_percent: l.discount_percent || 0,
+        })),
       },
     });
     cart = [];
@@ -458,6 +474,7 @@ resumeHeldBill = function (identifier) {
   cart = held.payload.lines.map((l) => ({
     ...state.products.find((p) => p.id === l.product),
     qty: l.qty,
+    discount_percent: l.discount_percent || 0,
   }));
   render();
 };
@@ -489,7 +506,7 @@ render = function () {
   }
 };
 document.addEventListener("keydown", (e) => {
-  if (page !== "billing" || !signedIn || $("#heldCounter")?.open) return;
+  if (page !== "billing" || !signedIn || document.querySelector("dialog[open]")) return;
   if (e.key === "F2") {
     e.preventDefault();
     $("#barcodeSearch").focus();
@@ -500,3 +517,22 @@ document.addEventListener("keydown", (e) => {
     completeSale();
   }
 });
+
+function counterDiscount(index, value) {
+  const amount = Number(value);
+  if (
+    !Number.isFinite(amount) ||
+    amount < 0 ||
+    amount > 100 ||
+    Math.abs(amount * 100 - Math.round(amount * 100)) > 0.000001
+  ) {
+    counterError(
+      "Enter a discount from 0 to 100 with at most two decimal places.",
+    );
+    renderCart();
+    return;
+  }
+  cart[index].discount_percent = value;
+  counterError();
+  renderCart();
+}

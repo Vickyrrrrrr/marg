@@ -10,6 +10,7 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
 GROUPS = {
+    'commercial-terms': 'test_commercial.py',
     'billing-stock': 'test_server.py',
     'pharmacy': 'test_pharmacy.py',
     'parties-invoices': 'test_parties.py',

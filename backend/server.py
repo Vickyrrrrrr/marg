@@ -10,6 +10,7 @@ import recovery
 import financial_year
 import workflows
 import checkout
+import commercial
 from threading import RLock
 from functools import wraps
 from urllib.parse import urlsplit, parse_qs
@@ -21,7 +22,7 @@ from decimal import Decimal, ROUND_HALF_UP
 ROOT = Path(getattr(sys, '_MEIPASS', Path(__file__).resolve().parents[1]))
 DB = Path(os.environ.get('LEDGERLY_DATA_DIR', str(ROOT / 'data'))) / 'erp.sqlite3'
 
-SCHEMA_VERSION = 14
+SCHEMA_VERSION = 15
 DATABASE_LOCK = RLock()
 
 def serialized(function):
@@ -70,6 +71,9 @@ def init():
             c.execute('ALTER TABLE documents ADD COLUMN company_snapshot TEXT')
         if 'taxable' not in line_columns:
             c.execute('ALTER TABLE lines ADD COLUMN taxable INTEGER')
+        for name in ("discount_bps", "free_qty"):
+            if name not in line_columns:
+                c.execute(f"ALTER TABLE lines ADD COLUMN {name} INTEGER NOT NULL DEFAULT 0")
         business_setup.initialize(c)
         security.initialize(c)
         settlements.initialize(c)
@@ -205,12 +209,13 @@ def mutate(path, d, actor=None):
             items = d['lines']
             if not (items and len(items) <= 500):
                 raise ValueError('Add at least one item')
-            party_ledger,party = parties.resolve(c,d,kind,create=path=='/api/documents')
+            party_ledger,party = parties.resolve(c,d,kind,create=path!='/api/quote')
             reference = d.get('reference')
             seen = set()
             computed = []
             taxable_amounts = []
             medicine_products=[]
+            commercial_terms=[]
             if kind in ('return', 'purchase_return'):
                 source_kind = 'sale' if kind == 'return' else 'purchase'
                 if not c.execute('SELECT id FROM documents WHERE id=? AND kind=?', (reference, source_kind)).fetchone():
@@ -228,6 +233,10 @@ def mutate(path, d, actor=None):
                 if unit not in ('loose', 'pack'):
                     raise ValueError('Choose loose units or packs')
                 qty *= p['pack_size'] if unit == 'pack' else 1
+                paid_qty = qty
+                discount_bps, free_qty = commercial.terms(item, kind)
+                qty += free_qty
+                commercial_terms.append((discount_bps, free_qty))
                 medicine_products.append(p)
                 price = p['price']
                 tax = p['tax']
@@ -246,14 +255,13 @@ def mutate(path, d, actor=None):
                     returned = c.execute('SELECT COALESCE(SUM(lines.qty),0) FROM lines JOIN documents ON document=documents.id WHERE documents.kind=? AND reference=? AND product=?', (kind, reference, pid)).fetchone()[0]
                     if not qty <= original['qty'] - returned:
                         raise ValueError('Return exceeds original quantity')
+                    commercial_terms[-1] = (original['discount_bps'], 0)
                     price = original['price']
                     tax = original['tax']
                     if kind == 'purchase_return':
                         if not p['stock'] >= qty:
                             raise ValueError('Insufficient stock for supplier return')
-                total = int((Decimal(price * qty) * (1 + Decimal(tax) / 10000)).quantize(Decimal('1'), rounding=ROUND_HALF_UP))
-                if kind == 'sale' and p['tax_inclusive']:
-                    total = price * qty
+                taxable, total = commercial.amounts(price, paid_qty, tax, kind == 'sale' and p['tax_inclusive'], discount_bps)
                 if kind == 'sale' and p['mrp'] is not None and total > p['mrp'] * qty:
                     raise ValueError('Selling price including tax exceeds batch MRP')
                 if kind in ('return', 'purchase_return'):
@@ -261,9 +269,6 @@ def mutate(path, d, actor=None):
                     def allocated(n):
                         return int((Decimal(original['total']) * n / original['qty']).quantize(Decimal('1'), rounding=ROUND_HALF_UP))
                     total = allocated(returned + qty) - allocated(returned)
-                taxable = price * qty
-                if kind == 'sale' and p['tax_inclusive']:
-                    taxable = int((Decimal(total)/(1+Decimal(tax)/10000)).quantize(Decimal('1'),rounding=ROUND_HALF_UP))
                 if kind in ('return','purchase_return'):
                     if original['taxable'] is None:
                         raise ValueError('Original invoice predates the accounting ledger; reconcile it before returning')
@@ -295,7 +300,7 @@ def mutate(path, d, actor=None):
                 else:
                     c.execute('UPDATE products SET stock=stock+? WHERE id=?', (delta, pid))
                 c.execute('INSERT INTO movements(document,product,quantity) VALUES(?,?,?)', (doc, pid, delta))
-                c.execute('INSERT INTO lines(document,product,qty,price,tax,total,taxable) VALUES(?,?,?,?,?,?,?)', (doc, pid, qty, price, tax, line_total, taxable_amounts[index]))
+                c.execute('INSERT INTO lines(document,product,qty,price,tax,total,taxable,discount_bps,free_qty) VALUES(?,?,?,?,?,?,?,?,?)', (doc, pid, qty, price, tax, line_total, taxable_amounts[index], *commercial_terms[index]))
             net = sum(taxable_amounts)
             tax_amount = total-net
             if kind in ('sale','return'):

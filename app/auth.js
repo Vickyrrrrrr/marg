@@ -45,6 +45,9 @@ render = function () {
     .forEach((e) => (e.textContent = state.operator?.username || "Operator"));
 };
 function showSignIn(setup) {
+  document.querySelector("#desktopMenu")?.remove();
+  document.querySelector("#contextMenu")?.remove();
+  document.querySelector("#deskDialog")?.remove();
   cart = [];
   activeHeldBill = null;
   counterDraft = null;

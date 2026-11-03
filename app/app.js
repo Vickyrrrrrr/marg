@@ -71,7 +71,7 @@ function overview() {
 }
 function salesTable(sales) {
   return sales.length
-    ? `<div class="tablewrap"><table><thead><tr><th>Invoice</th><th>Customer</th><th>Date</th><th>Items</th><th>Total</th><th>Status</th></tr></thead><tbody>${sales.map((s) => `<tr><td><b>${esc(s.number)}</b></td><td>${esc(s.customer)}</td><td>${esc(s.date)}</td><td>${s.lines.reduce((a, l) => a + l.qty, 0)}</td><td><b>${money(s.total)}</b></td><td><span class="badge">Completed</span></td></tr>`).join("")}</tbody></table></div>`
+    ? `<div class="tablewrap"><table><thead><tr><th>Invoice</th><th>Customer</th><th>Date</th><th>Items</th><th>Total</th><th>Status</th></tr></thead><tbody>${sales.map((s) => `<tr data-document="${s.id}" tabindex="0"><td><b>${esc(s.number)}</b></td><td>${esc(s.customer)}</td><td>${esc(s.date)}</td><td>${s.lines.reduce((a, l) => a + l.qty, 0)}</td><td><b>${money(s.total)}</b></td><td><span class="badge">Completed</span></td></tr>`).join("")}</tbody></table></div>`
     : '<div class="empty">No sales yet. Your completed invoices will appear here.</div>';
 }
 function inventory() {
@@ -100,7 +100,7 @@ function filterProducts() {
       )
       .map(
         (p) =>
-          `<tr><td><b>${esc(p.name)}</b></td><td>${esc(p.batch)}</td><td>${esc(p.expiry || "—")}</td><td>${p.stock} units</td><td>${money(p.price)}</td><td>${p.tax}%</td><td><span class="badge ${p.stock <= 10 || due(p) ? "warn" : ""}">${p.stock <= 10 ? "Low stock" : due(p) ? "Check expiry" : "In stock"}</span></td></tr>`,
+          `<tr tabindex="0" data-product="${p.id}"><td><button class="link" onclick="batchDetails('${p.id}')">${esc(p.name)}</button></td><td>${esc(p.batch)}</td><td>${esc(p.expiry || "—")}</td><td>${p.stock} units</td><td>${money(p.price)}</td><td>${p.tax}%</td><td><span class="badge ${p.stock <= 10 || due(p) ? "warn" : ""}">${p.stock <= 10 ? "Low stock" : due(p) ? "Check expiry" : "In stock"}</span></td></tr>`,
       )
       .join("") ||
     '<tr><td colspan="7" class="empty">No matching products.</td></tr>';

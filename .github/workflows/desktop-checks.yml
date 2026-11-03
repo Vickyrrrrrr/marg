@@ -71,6 +71,9 @@ jobs:
       - name: Billing, inventory and accounting
         if: ${{ !cancelled() }}
         run: python scripts/ci_checks.py --group billing-stock
+      - name: Discounts, free units and customer posting
+        if: ${{ !cancelled() }}
+        run: python scripts/ci_checks.py --group commercial-terms
       - name: Pharmacy and prescription controls
         if: ${{ !cancelled() }}
         run: python scripts/ci_checks.py --group pharmacy

@@ -18,3 +18,9 @@ Build a dependable Windows and macOS desktop alternative to Marg ERP for pharmac
 Use consistent spacing, readable tables and amounts, explicit units, accessible focus states and keyboard-first flows. Save genuine records to the database; never substitute mock screens or fabricated transactions for functionality. Document unsupported behavior accurately.
 
 A workflow is complete only when its UI, validation, persistence, accounting/stock effects, error handling and relevant tests work together. Production readiness requires verified Windows/macOS builds, printer/scanner checks, representative pharmacy acceptance testing and reconciliation of financial and stock records. Passing backend tests alone is insufficient.
+
+## Current implementation boundary
+
+Implemented: explicit line discounts, supplier free units, editable purchase lines and authoritative quote totals; atomic checkout and named customer-ledger posting; held discounts; desktop command menus, batch/invoice context actions, tax detail and current-stock expiry reporting/export.
+
+Still required: complete statutory GST classification/returns, automatic promotion and customer-rate rules, purchase orders, credit-limit enforcement, claims settlement, stocktake, cost valuation, bank reconciliation, shared counters, and target-OS acceptance. Binary menu/form evidence describes reference scope; it does not establish that these workflows are implemented or verified in Ledgerly.

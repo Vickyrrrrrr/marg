@@ -1,4 +1,5 @@
 """Held counter bills and batch recall controls using durable local records."""
+import commercial
 import json
 import secrets
 import time
@@ -49,7 +50,7 @@ def mutate(c, path, d, actor, integer):
             if pid in seen or not c.execute('SELECT 1 FROM products WHERE id=?', (pid,)).fetchone():
                 raise ValueError('Unknown or repeated batch')
             seen.add(pid)
-            lines.append({'product': pid, 'qty': integer(item['qty'])})
+            lines.append({'product': pid, 'qty': integer(item['qty']), 'discount_percent': commercial.discount(item.get('discount_percent', 0)) / 100})
         party = payload.get('party', '')
         trade = payload.get('trade', 'retail')
         rx = payload.get('prescription') or {}
